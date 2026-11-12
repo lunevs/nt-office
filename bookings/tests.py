@@ -257,3 +257,39 @@ class BookingTests(TestCase):
         client.force_login(self.admin)
         for name in ['confirm', 'cancel', 'resubmit']:
             self.assertEqual(client.post(reverse('event_status', args=[event.pk, name])).status_code, 403)
+
+    def test_cancelled_sorted_by_cancellation_time_not_event_date(self):
+        from unittest.mock import patch
+        from datetime import datetime
+        from zoneinfo import ZoneInfo
+        first = self.create_event()
+        second = Event.objects.create(title='Более ранняя встреча', date=date(2026, 11, 1), start_time='10:00', end_time='11:00', author=self.author, responsible=self.author, people_count=1)
+        for event, day in [(first, 15), (second, 16)]:
+            with patch('bookings.views.timezone.now', return_value=datetime(2026, 11, day, 12, tzinfo=ZoneInfo('Europe/Belgrade'))):
+                self.client.post(reverse('event_status', args=[event.pk, 'cancel']))
+        first.refresh_from_db()
+        stamp = first.cancelled_at
+        self.client.post(reverse('event_status', args=[first.pk, 'cancel']))
+        first.refresh_from_db()
+        self.assertEqual(first.cancelled_at, stamp)
+        response = self.client.get(reverse('events_cancelled'))
+        self.assertEqual([event['pk'] for event in response.context['events']], [second.pk, first.pk])
+        self.client.post(reverse('event_edit', args=[first.pk]), {**self.data, 'title': 'Исправление'})
+        first.refresh_from_db()
+        self.assertEqual(first.cancelled_at, stamp)
+        self.client.post(reverse('event_status', args=[first.pk, 'resubmit']))
+        first.refresh_from_db()
+        self.assertIsNone(first.cancelled_at)
+
+    def test_cancelled_list_scoped_to_author_for_members(self):
+        own = self.create_event()
+        own.status = Event.Status.CANCELLED
+        own.save()
+        other = Event.objects.create(title='Чужая отмена', date=own.date, start_time='10:00', end_time='11:00', author=self.other, responsible=self.author, people_count=2, status=Event.Status.CANCELLED)
+        response = self.client.get(reverse('events_cancelled'))
+        self.assertEqual([e['pk'] for e in response.context['events']], [own.pk])
+        self.assertNotContains(response, other.title)
+        self.assertContains(self.client.get(reverse('profile')), 'Мои отменённые мероприятия')
+        self.client.force_login(self.admin)
+        self.assertEqual(len(self.client.get(reverse('events_cancelled')).context['events']), 2)
+        self.assertEqual(self.client.get(reverse('events_cancelled'), {'mine': '1'}).context['events'], [])

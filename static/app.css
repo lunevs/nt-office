@@ -18,3 +18,15 @@ body:has(.bottom-nav) main{padding-bottom:calc(100px + env(safe-area-inset-botto
 .active-user-card{display:flex;align-items:center;justify-content:space-between;gap:12px}.active-user-card .user-identity{margin-bottom:0;min-width:0}.active-user-card .user-identity>div:last-child{min-width:0}
 
 .event-badges{display:flex;flex-wrap:wrap;gap:4px;margin:6px 0 10px}.status-badge,.conflict-badge{display:inline-block;border-radius:8px;padding:3px 6px;font-size:10px;font-weight:600;line-height:1.4}.status-pending{background:#f6eccf;color:#795b16}.status-confirmed{background:#dcebdc;color:#315d4e}.status-cancelled{background:#eee8e5;color:#785b52}.conflict-badge{background:#fae2d9;color:#923c27}.event-card .event-badges{margin:0;gap:2px}.event-card .status-badge,.event-card .conflict-badge{font-size:9px;padding:1px 3px}.event-actions{display:grid;gap:10px;margin-top:12px}.cancel-button{color:#923c27;background:#fcf0ea;border-color:#efd8ce}.conflict-panel{background:#fcf0ea;border-radius:14px;padding:16px;margin-top:20px;font-size:13px}.conflict-panel p{font-size:12px}.conflict-panel a{display:block;margin-top:8px}.hide-details-field label{display:flex;gap:10px;align-items:center;min-height:44px}.hide-details-field input{width:20px;height:20px;min-height:20px;accent-color:var(--green)}.cancelled-link{display:inline-flex;align-items:center;min-height:44px;font-size:13px;margin-top:8px}.pagination{display:flex;justify-content:space-between;margin-top:20px}.dense-group .event-card{min-height:116px}
+
+.approval-actions{grid-template-columns:1fr 1fr}.approval-actions .button{justify-content:center;padding:12px 8px}
+
+.event-time-heading{display:flex;align-items:center;justify-content:space-between;gap:12px}.event-time-heading .detail-time{font-size:clamp(23px,6vw,30px)}
+
+body:has(.event-editor-page) main{padding-top:16px}.event-editor-page .back-link{display:flex;align-items:center;width:fit-content;min-height:44px;margin-bottom:8px}.event-editor-page>.eyebrow{margin-bottom:20px}
+
+body:has(.management-page) main{padding-top:16px}.management-page>.section-heading:first-child{margin-top:0}
+
+.cancelled-management-button{margin-top:16px}
+
+.logout-form .button{justify-content:center;text-align:center}

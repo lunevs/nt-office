@@ -2,6 +2,7 @@ from datetime import date, timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.db import transaction
+from django.db.models import F
 from django.http import HttpResponseForbidden, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
@@ -92,11 +93,15 @@ def change_status(request, pk, action):
         if action == "resubmit" and event.status != Event.Status.CANCELLED:
             messages.error(request, "Повторно отправить можно только отменённое мероприятие.")
             return redirect("event_detail", pk=event.pk)
+        if action == "cancel" and event.status != Event.Status.CANCELLED:
+            event.cancelled_at = timezone.now()
+        elif action == "resubmit":
+            event.cancelled_at = None
         event.status = Event.Status.CANCELLED if action == "cancel" else Event.Status.PENDING
     else:
         from django.http import Http404
         raise Http404
-    event.save(update_fields=["status", "updated_at"])
+    event.save(update_fields=["status", "updated_at", "cancelled_at"])
     messages.success(request, {"confirm": "Мероприятие подтверждено.", "cancel": "Мероприятие отменено.", "resubmit": "Мероприятие отправлено на подтверждение."}[action])
     return redirect("event_detail", pk=event.pk)
 
@@ -104,9 +109,12 @@ def change_status(request, pk, action):
 @require_http_methods(["GET"])
 def cancelled(request):
     from django.core.paginator import Paginator
-    events = Event.objects.filter(status=Event.Status.CANCELLED).select_related("author", "responsible").prefetch_related("rooms").order_by("-date", "-start_time", "-pk")
+    events = Event.objects.filter(status=Event.Status.CANCELLED).select_related("author", "responsible").prefetch_related("rooms").order_by(F("cancelled_at").desc(nulls_last=True), "-pk")
+    mine = not request.user.is_administrator or request.GET.get("mine") == "1"
+    if mine:
+        events = events.filter(author=request.user)
     page = Paginator(events, 20).get_page(request.GET.get("page"))
-    return render(request, "bookings/cancelled.html", {"events": [event.visible_to(request.user) for event in page], "page": page})
+    return render(request, "bookings/cancelled.html", {"events": [event.visible_to(request.user) for event in page], "page": page, "mine": mine})
 
 @login_required
 @require_http_methods(["GET"])

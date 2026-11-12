@@ -20,7 +20,7 @@ class Event(models.Model):
         CANCELLED = "cancelled", "Отменено"
 
     status = models.CharField("Статус", max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
-    hide_details = models.BooleanField("Скрыть детали", default=False)
+    hide_details = models.BooleanField("Private (не публиковать детали)", default=False)
 
     title = models.CharField("Название", max_length=160)
     date = models.DateField("Дата", db_index=True)
@@ -32,6 +32,7 @@ class Event(models.Model):
     responsible = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="responsible_events", verbose_name="Ответственный")
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+    cancelled_at = models.DateTimeField("Время отмены", null=True, blank=True, db_index=True)
 
     class Meta:
         ordering = ["date", "start_time", "pk"]
