@@ -293,3 +293,149 @@ class BookingTests(TestCase):
         self.client.force_login(self.admin)
         self.assertEqual(len(self.client.get(reverse('events_cancelled')).context['events']), 2)
         self.assertEqual(self.client.get(reverse('events_cancelled'), {'mine': '1'}).context['events'], [])
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class SeriesTests(TestCase):
+    setUp = BookingTests.setUp
+
+    def series(self, **changes):
+        data = {**self.data, 'repeat_weekly': 'on', 'repeat_until': '2026-12-03', **changes}
+        response = self.client.post(reverse('event_create'), data)
+        self.assertEqual(response.status_code, 302)
+        return list(Event.objects.order_by('sequence'))
+
+    def edit(self, event, **changes):
+        data = {**self.data, 'date': event.date.isoformat(), 'scope': 'one', **changes}
+        return self.client.post(reverse('event_edit', args=[event.pk]), data)
+
+    def test_create_weekly_until_inclusive_and_nearest_day_redirect(self):
+        from unittest.mock import patch
+        with patch('bookings.views.timezone.localdate', return_value=date(2026, 11, 20)):
+            response = self.client.post(reverse('event_create'), {**self.data, 'repeat_weekly': 'on', 'repeat_until': '2026-12-03'})
+        self.assertEqual(response.url, '/?date=2026-11-26')
+        events = list(Event.objects.order_by('sequence'))
+        self.assertEqual([e.date for e in events], [date(2026, 11, 12), date(2026, 11, 19), date(2026, 11, 26), date(2026, 12, 3)])
+        self.assertEqual(len({e.series_id for e in events}), 1)
+        self.assertIsNotNone(events[0].series_id)
+        self.assertTrue(all(e.rooms.count() == 2 and e.status == Event.Status.PENDING for e in events))
+
+    def test_repeat_validation_and_single_occurrence_series(self):
+        for until in ['', '2026-11-11', '2040-01-01']:
+            response = self.client.post(reverse('event_create'), {**self.data, 'repeat_weekly': 'on', 'repeat_until': until})
+            self.assertEqual(response.status_code, 200)
+            self.assertFalse(Event.objects.exists())
+        self.assertEqual(len(self.series(repeat_until='2026-11-12')), 1)
+
+    def test_one_move_preserves_others_and_sequence(self):
+        events = self.series()
+        self.assertEqual(self.edit(events[1], date='2026-11-21').status_code, 302)
+        moved = Event.objects.get(pk=events[1].pk)
+        self.assertEqual(moved.date, date(2026, 11, 21))
+        self.assertEqual(moved.sequence, 1)
+        self.assertEqual(Event.objects.get(pk=events[2].pk).date, date(2026, 11, 26))
+        # Even when moved before an earlier occurrence, future refers to series order.
+        self.edit(moved, date='2026-11-10')
+        self.client.post(reverse('event_status', args=[moved.pk, 'cancel']), {'scope': 'future'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 3)
+        self.assertEqual(Event.objects.get(pk=events[0].pk).status, Event.Status.PENDING)
+
+    def test_future_edit_preserves_previous_and_cancelled_status(self):
+        events = self.series()
+        Event.objects.update(status=Event.Status.CONFIRMED)
+        Event.objects.filter(pk=events[3].pk).update(status=Event.Status.CANCELLED)
+        response = self.edit(events[1], date='2026-11-20', start_time='17:00', scope='future', rooms=[self.rooms[2].pk])
+        self.assertEqual(response.status_code, 302)
+        items = list(Event.objects.order_by('sequence'))
+        self.assertEqual(items[0].date, date(2026, 11, 12))
+        self.assertEqual(items[0].status, Event.Status.CONFIRMED)
+        self.assertEqual([e.date for e in items[1:]], [date(2026, 11, 20), date(2026, 11, 27), date(2026, 12, 4)])
+        self.assertEqual([e.status for e in items[1:]], [Event.Status.PENDING, Event.Status.PENDING, Event.Status.CANCELLED])
+        self.assertTrue(all(list(e.rooms.all()) == [self.rooms[2]] for e in items[1:]))
+
+    def test_admin_future_edit_does_not_reset_confirmation(self):
+        events = self.series()
+        Event.objects.update(status=Event.Status.CONFIRMED)
+        self.client.force_login(self.admin)
+        self.edit(events[1], start_time='17:00', scope='future')
+        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 4)
+
+    def test_cancel_one_or_future_and_resubmit(self):
+        events = self.series()
+        self.client.post(reverse('event_status', args=[events[1].pk, 'cancel']), {'scope': 'one'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 1)
+        self.client.post(reverse('event_status', args=[events[2].pk, 'cancel']), {'scope': 'future'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 3)
+        self.assertTrue(all(e.cancelled_at for e in Event.objects.filter(status=Event.Status.CANCELLED)))
+        self.client.post(reverse('event_status', args=[events[1].pk, 'resubmit']), {'scope': 'future'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.PENDING).count(), 4)
+        self.assertFalse(Event.objects.exclude(cancelled_at=None).exists())
+
+    def test_other_user_cannot_mutate_series_and_status_per_occurrence(self):
+        events = self.series()
+        self.client.force_login(self.other)
+        self.assertEqual(self.edit(events[0], scope='future').status_code, 403)
+        self.assertEqual(self.client.post(reverse('event_status', args=[events[0].pk, 'cancel']), {'scope': 'future'}).status_code, 403)
+        self.client.force_login(self.admin)
+        self.client.post(reverse('event_status', args=[events[0].pk, 'confirm']), {'scope': 'future'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 4)
+
+    def test_local_time_preserved_across_dst_and_conflicts_per_occurrence(self):
+        events = self.series(date='2027-03-21', repeat_until='2027-04-04')
+        self.assertEqual([e.start_time for e in events], [time(18)] * 3)
+        self.assertEqual([e.date for e in events], [date(2027, 3, 21), date(2027, 3, 28), date(2027, 4, 4)])
+        extra = Event.objects.create(title='Конфликт', date=events[1].date, start_time='18:30', end_time='19:00', people_count=3, author=self.other, responsible=self.other)
+        extra.rooms.add(self.rooms[0])
+        self.assertFalse(events[0].conflicts().exists())
+        self.assertEqual(list(events[1].conflicts()), [extra])
+        self.assertFalse(events[2].conflicts().exists())
+
+    def test_series_form_and_detail_render(self):
+        events = self.series()
+        self.assertContains(self.client.get(reverse('event_edit', args=[events[0].pk])), 'Эта и все последующие встречи')
+        self.assertContains(self.client.get(reverse('event_detail', args=[events[0].pk])), 'Еженедельная встреча')
+
+    def test_bulk_confirmation_skips_cancelled_and_previous(self):
+        events = self.series()
+        Event.objects.filter(pk=events[2].pk).update(status=Event.Status.CANCELLED)
+        self.client.force_login(self.admin)
+        response = self.client.post(reverse('event_status', args=[events[1].pk, 'confirm']), {'scope': 'future'})
+        self.assertRedirects(response, reverse('users'))
+        self.assertEqual(list(Event.objects.order_by('sequence').values_list('status', flat=True)), [Event.Status.PENDING, Event.Status.CONFIRMED, Event.Status.CANCELLED, Event.Status.CONFIRMED])
+
+    def test_single_confirmation_is_default_and_series_grouped(self):
+        events = self.series()
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('users'))
+        cards = response.context['pending_events']
+        self.assertEqual(len(cards), 1)
+        self.assertEqual(cards[0]['count'], 4)
+        self.assertEqual(cards[0]['pk'], events[0].pk)
+        self.assertContains(response, 'На подтверждении: 4')
+        self.client.post(reverse('event_status', args=[events[0].pk, 'confirm']))
+        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 1)
+        response = self.client.get(reverse('users'))
+        self.assertEqual(response.context['pending_events'][0]['pk'], events[1].pk)
+        self.assertEqual(response.context['pending_events'][0]['count'], 3)
+
+    def test_group_representative_preserves_series_order_after_move(self):
+        events = self.series()
+        self.edit(events[2], date='2026-11-01')
+        self.client.force_login(self.admin)
+        card = self.client.get(reverse('users')).context['pending_events'][0]
+        self.assertEqual(card['pk'], events[0].pk)
+        self.assertEqual(card['first_date'], date(2026, 11, 1))
+        self.client.post(reverse('event_status', args=[card['pk'], 'confirm']), {'scope': 'future'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 4)
+
+    def test_whole_series_confirmation_and_rejection_from_middle(self):
+        events = self.series()
+        Event.objects.filter(pk=events[2].pk).update(status=Event.Status.CANCELLED)
+        self.client.force_login(self.admin)
+        response = self.client.get(reverse('event_detail', args=[events[1].pk]))
+        self.assertContains(response, 'name="scope" value="all"', count=2)
+        self.assertNotContains(response, 'Только эта встреча')
+        self.client.post(reverse('event_status', args=[events[1].pk, 'confirm']), {'scope': 'all'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 3)
+        self.assertEqual(Event.objects.get(pk=events[2].pk).status, Event.Status.CANCELLED)
+        self.client.post(reverse('event_status', args=[events[1].pk, 'cancel']), {'scope': 'all'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 4)

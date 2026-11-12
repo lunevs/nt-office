@@ -112,9 +112,9 @@ def password_change(request):
 
 @administrator_required
 def users(request):
-    from bookings.models import Event
-    pending_events = Event.objects.filter(status=Event.Status.PENDING).select_related("author", "responsible").prefetch_related("rooms")
-    return render(request, "accounts/users.html", {"pending_events": [event.visible_to(request.user, event.conflicts().exists()) for event in pending_events], "pending_users": User.objects.filter(is_active=False).order_by("date_joined"), "active_users": User.objects.filter(is_active=True).order_by("last_name", "first_name")})
+    from bookings.series import pending_review_cards
+    pending_events = pending_review_cards(request.user)
+    return render(request, "accounts/users.html", {"pending_events": pending_events, "pending_users": User.objects.filter(is_active=False).order_by("date_joined"), "active_users": User.objects.filter(is_active=True).order_by("last_name", "first_name")})
 
 @require_POST
 @administrator_required

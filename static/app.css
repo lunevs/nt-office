@@ -30,3 +30,11 @@ body:has(.management-page) main{padding-top:16px}.management-page>.section-headi
 .cancelled-management-button{margin-top:16px}
 
 .logout-form .button{justify-content:center;text-align:center}
+
+.scope-label{display:block;font-size:12px;color:var(--muted);margin:0 0 6px}.event-actions select{margin-bottom:10px}.series-label{font-size:12px;color:var(--green);margin:0 0 12px}.approval-actions form{min-width:0}
+
+.approval-actions{align-items:end}
+
+input:disabled{background:#e9ece7;color:#8a928c;border-color:#dce1d9;cursor:not-allowed;opacity:1}
+
+.series-cancel-actions{grid-template-columns:minmax(0,1fr) minmax(0,1fr)}.series-cancel-actions .button{justify-content:center;text-align:center;padding:12px 8px}

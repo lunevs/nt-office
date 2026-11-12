@@ -23,5 +23,23 @@ class EventForm(forms.ModelForm):
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        if not self.instance.pk:
+            self.fields["repeat_weekly"] = forms.BooleanField(label="Повторять раз в неделю", required=False)
+            self.fields["repeat_until"] = forms.DateField(label="Повторять до", required=False, widget=forms.DateInput(attrs={"type": "date"}), help_text="Включительно. Заполните для еженедельной серии.")
+        elif self.instance.series_id:
+            self.fields["scope"] = forms.ChoiceField(label="Применить изменения", choices=[("one", "Только эта встреча"), ("future", "Эта и все последующие встречи")], initial="one")
         self.fields["responsible"].queryset = get_user_model().objects.filter(is_active=True).order_by("last_name", "first_name", "username")
         self.fields["people_count"].min_value = 1
+
+
+    def clean(self):
+        data = super().clean()
+        if data.get("repeat_weekly"):
+            start, end = data.get("date"), data.get("repeat_until")
+            if not end:
+                self.add_error("repeat_until", "Укажите дату окончания серии.")
+            elif start and end < start:
+                self.add_error("repeat_until", "Окончание серии не может быть раньше первой встречи.")
+            elif start and (end - start).days // 7 >= 520:
+                self.add_error("repeat_until", "В одной серии может быть не более 520 встреч.")
+        return data

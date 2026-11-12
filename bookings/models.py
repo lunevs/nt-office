@@ -1,3 +1,4 @@
+import uuid
 from datetime import time
 from django.conf import settings
 from django.core.exceptions import ValidationError
@@ -13,7 +14,15 @@ class Room(models.Model):
     def __str__(self):
         return self.name
 
+class EventSeries(models.Model):
+    id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
 class Event(models.Model):
+    series = models.ForeignKey(EventSeries, null=True, blank=True, on_delete=models.PROTECT, related_name="events")
+    sequence = models.PositiveIntegerField(null=True, blank=True)
+
     class Status(models.TextChoices):
         PENDING = "pending", "На подтверждении"
         CONFIRMED = "confirmed", "Подтверждено"
@@ -37,6 +46,7 @@ class Event(models.Model):
     class Meta:
         ordering = ["date", "start_time", "pk"]
         constraints = [
+            models.UniqueConstraint(fields=["series", "sequence"], name="unique_series_occurrence"),
             models.CheckConstraint(condition=models.Q(end_time__gt=models.F("start_time")), name="event_positive_duration"),
             models.CheckConstraint(condition=models.Q(start_time__gte=time(6), end_time__lte=time(23)), name="event_office_hours"),
             models.CheckConstraint(condition=models.Q(people_count__gte=1), name="event_positive_people"),
@@ -68,7 +78,7 @@ class Event(models.Model):
     def visible_to(self, user, has_conflict=False):
         visible = not self.hide_details or self.can_edit(user)
         return {
-            "pk": self.pk, "title": self.title if visible else "Занято",
+            "pk": self.pk, "is_recurring": self.series_id is not None, "title": self.title if visible else "Занято",
             "date": self.date, "start_time": self.start_time, "end_time": self.end_time,
             "rooms": self.rooms.all(), "responsible": self.responsible,
             "people_count": self.people_count if visible else None,
