@@ -1,0 +1,1 @@
+<div class="event-badges"><span class="status-badge status-{{ event.status }}">{% if event.status == 'confirmed' %}✓{% elif event.status == 'cancelled' %}×{% else %}◷{% endif %} {{ event.status_label }}</span>{% if event.has_conflict %}<span class="conflict-badge">⚠ Пересечение</span>{% endif %}</div>
