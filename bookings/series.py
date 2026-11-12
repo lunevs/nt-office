@@ -34,7 +34,7 @@ def create_events(form, user):
     series = EventSeries.objects.create() if data.get('repeat_weekly') else None
     result = []
     for index, day in enumerate(dates):
-        event = Event(**{key: data[key] for key in FIELDS if key != 'date'}, date=day, author=user, series=series, sequence=index if series else None)
+        event = Event(**{key: data[key] for key in FIELDS if key != 'date'}, date=day, author=user, series=series, sequence=index if series else None, status=Event.Status.CONFIRMED if user.is_administrator else Event.Status.PENDING)
         event.full_clean()
         event.save()
         event.rooms.set(data['rooms'])

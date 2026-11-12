@@ -1,7 +1,13 @@
 from django.urls import path
 from accounts import views
 from bookings import views as bookings
+from messaging import views as messaging
 urlpatterns = [
+    path("messages/", messaging.inbox, name="messages"),
+    path("messages/people/", messaging.people, name="message_people"),
+    path("messages/<int:pk>/", messaging.thread, name="message_thread"),
+    path("messages/<int:pk>/updates/", messaging.updates, name="message_updates"),
+    path("messages/<int:pk>/read/", messaging.mark_read, name="message_read"),
     path("", bookings.calendar, name="home"),
     path("events/cancelled/", bookings.cancelled, name="events_cancelled"),
     path("events/<int:pk>/status/<str:action>/", bookings.change_status, name="event_status"),

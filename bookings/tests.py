@@ -439,3 +439,15 @@ class SeriesTests(TestCase):
         self.assertEqual(Event.objects.get(pk=events[2].pk).status, Event.Status.CANCELLED)
         self.client.post(reverse('event_status', args=[events[1].pk, 'cancel']), {'scope': 'all'})
         self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 4)
+
+    def test_administrator_creates_confirmed_single_and_series(self):
+        self.client.force_login(self.admin)
+        self.client.post(reverse('event_create'), self.data)
+        self.assertEqual(Event.objects.get().status, Event.Status.CONFIRMED)
+        self.client.post(reverse('event_create'), {**self.data, 'repeat_weekly': 'on', 'repeat_until': '2026-12-03'})
+        self.assertEqual(Event.objects.count(), 5)
+        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 5)
+        self.assertEqual(self.client.get(reverse('users')).context['pending_events'], [])
+        self.client.force_login(self.author)
+        self.client.post(reverse('event_create'), {**self.data, 'status': 'confirmed'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.PENDING).count(), 1)
