@@ -30,7 +30,7 @@ class BookingTests(TestCase):
         response = self.client.get(reverse('home'), {'date': '2026-11-12'})
         self.assertContains(response, 'Домашняя группа')
         self.assertContains(response, 'Основной зал')
-        self.assertContains(response, 'Класс 1')
+        self.assertContains(response, 'Бэнкси (класс с доской)')
         self.assertContains(response, '?date=2026-11-13')
         self.assertNotContains(self.client.get(reverse('home'), {'date': '2026-11-13'}), 'Домашняя группа')
         self.assertContains(self.client.get(reverse('event_detail', args=[event.pk])), 'Пётр')
@@ -451,3 +451,19 @@ class SeriesTests(TestCase):
         self.client.force_login(self.author)
         self.client.post(reverse('event_create'), {**self.data, 'status': 'confirmed'})
         self.assertEqual(Event.objects.filter(status=Event.Status.PENDING).count(), 1)
+
+    def test_room_rename_preserves_existing_bookings(self):
+        import importlib
+        from django.apps import apps
+        migration = importlib.import_module('bookings.migrations.0007_rename_rooms_add_kitchen')
+        room = Room.objects.get(name='Бэнкси (класс с доской)')
+        event = Event.objects.create(title='Проверка помещения', date=date(2026, 11, 14), start_time='10:00', end_time='11:00', people_count=2, author=self.author, responsible=self.author)
+        event.rooms.add(room)
+        room.name = 'Класс 1'
+        room.save()
+        migration.forwards(apps, None)
+        room.refresh_from_db()
+        self.assertEqual(room.name, 'Бэнкси (класс с доской)')
+        self.assertEqual(event.rooms.get().pk, room.pk)
+        self.assertTrue(Room.objects.filter(name='Кухня').exists())
+        self.assertEqual(Room.objects.count(), 5)
