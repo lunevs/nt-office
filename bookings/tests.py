@@ -467,3 +467,78 @@ class SeriesTests(TestCase):
         self.assertEqual(event.rooms.get().pk, room.pk)
         self.assertTrue(Room.objects.filter(name='Кухня').exists())
         self.assertEqual(Room.objects.count(), 5)
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class MonthCalendarTests(TestCase):
+    setUp = BookingTests.setUp
+
+    def event(self, day, start='10:00', end='11:00', room=0, **values):
+        event = Event.objects.create(title='Встреча месяца', date=day, start_time=start, end_time=end, people_count=5, author=self.other, responsible=self.other, **values)
+        event.rooms.add(self.rooms[room])
+        return event
+
+    def cells(self, response):
+        return {cell['date']: cell for week in response.context['month_weeks'] for cell in week if cell}
+
+    def test_month_counts_conflicts_and_cancelled_exclusion(self):
+        self.event(date(2026,11,14))
+        self.event(date(2026,11,14), start='10:30', end='11:30')
+        self.event(date(2026,11,15))
+        self.event(date(2026,11,15), start='11:00', end='12:00')
+        self.event(date(2026,11,16))
+        self.event(date(2026,11,16), room=1)
+        self.event(date(2026,11,17), status=Event.Status.CANCELLED)
+        response = self.client.get(reverse('home'), {'view':'month','date':'2026-11-14'})
+        cells = self.cells(response)
+        self.assertEqual(len(cells),30)
+        self.assertEqual(cells[date(2026,11,14)]['count'],2)
+        self.assertTrue(cells[date(2026,11,14)]['conflict'])
+        self.assertFalse(cells[date(2026,11,15)]['conflict'])
+        self.assertFalse(cells[date(2026,11,16)]['conflict'])
+        self.assertEqual(cells[date(2026,11,17)]['count'],0)
+        self.assertEqual(response.context['event_count'],2)
+        self.assertContains(response, '?view=month&amp;date=2026-11-15')
+
+    def test_hidden_details_not_exposed_in_month(self):
+        event=self.event(date(2026,11,15),hide_details=True)
+        event.title='Скрытое название 76123'
+        event.save()
+        for selected in ['2026-11-14','2026-11-15']:
+            response=self.client.get(reverse('home'),{'view':'month','date':selected})
+            self.assertNotContains(response,event.title)
+            self.assertEqual(self.cells(response)[event.date]['count'],1)
+
+    def test_month_navigation_clamps_day_and_crosses_year(self):
+        from .month import shift_month
+        self.assertEqual(shift_month(date(2028,1,31),1),date(2028,2,29))
+        self.assertEqual(shift_month(date(2027,1,31),1),date(2027,2,28))
+        self.assertEqual(shift_month(date(2026,12,14),1),date(2027,1,14))
+        self.assertEqual(shift_month(date(2026,1,14),-1),date(2025,12,14))
+        self.assertIsNone(shift_month(date(9999,12,14),1))
+        response=self.client.get(reverse('home'),{'view':'month','date':'2028-02-29'})
+        self.assertEqual(len(self.cells(response)),29)
+        self.assertEqual(response.context['previous'],date(2028,1,29))
+        self.assertEqual(response.context['next'],date(2028,3,29))
+        self.assertEqual(response.context['month_weeks'][0][0],None)
+
+    def test_month_selection_add_date_and_empty_day(self):
+        response=self.client.get(reverse('home'),{'view':'month','date':'2026-11-14'})
+        self.assertContains(response, '/events/new/?date=2026-11-14')
+        self.assertContains(response,'Мероприятий не запланировано')
+        self.assertNotContains(response,'class="timeline"')
+        self.assertTrue(self.cells(response)[date(2026,11,14)]['selected'])
+        self.assertContains(response,'name="view" value="month"')
+        response=self.client.get(reverse('home'),{'date':'2026-11-14','view':'day'})
+        self.assertEqual(response.context['calendar_mode'],'day')
+        self.assertNotContains(response,'class="month-grid"')
+        self.assertEqual(response.context['next'],date(2026,11,15))
+
+    def test_calendar_remembers_last_mode_after_leaving(self):
+        self.client.get(reverse('home'), {'view':'month'})
+        self.client.get(reverse('profile'))
+        self.assertEqual(self.client.get(reverse('home')).context['calendar_mode'], 'month')
+        self.client.get(reverse('home'), {'view':'day'})
+        self.client.get(reverse('messages'))
+        self.assertEqual(self.client.get(reverse('home')).context['calendar_mode'], 'day')
+        self.client.get(reverse('home'), {'view':'invalid'})
+        self.assertEqual(self.client.get(reverse('home')).context['calendar_mode'], 'day')

@@ -11,6 +11,7 @@ from django.utils import timezone
 from django.views.decorators.http import require_http_methods
 from .forms import EventForm
 from .layout import day_layout
+from .month import month_grid, shift_month
 from .models import Event
 from .series import create_events, lock_event, update_events, set_status
 
@@ -31,6 +32,15 @@ def calendar(request):
     day = selected_day(request.GET.get("date"))
     events = list(Event.objects.filter(date=day).exclude(status=Event.Status.CANCELLED).select_related("responsible").prefetch_related("rooms"))
     context = {"day": day, "previous": day - timedelta(days=1), "next": day + timedelta(days=1), "today": timezone.localdate(), "event_count": len(events), **day_layout(events, request.user)}
+    mode_key = f'calendar_mode_{request.user.pk}'
+    requested_mode = request.GET.get('view')
+    if requested_mode in {'day', 'month'}:
+        request.session[mode_key] = requested_mode
+    context['calendar_mode'] = request.session.get(mode_key, 'day')
+    if context['calendar_mode'] == 'month':
+        context['month_weeks'] = month_grid(day, context['today'])
+        context['previous'] = shift_month(day, -1)
+        context['next'] = shift_month(day, 1)
     return render(request, "bookings/calendar.html", context)
 
 @login_required
