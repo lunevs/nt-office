@@ -48,14 +48,12 @@ def register(request):
     if request.method == "POST" and form.is_valid():
         try:
             with transaction.atomic():
-                form.save()
-            return redirect("pending")
+                user = form.save()
+            login(request, user)
+            return redirect("home")
         except IntegrityError:
             form.add_error("username", "Этот логин уже занят.")
-    return render(request, "accounts/form.html", {"form": form, "title": "Создать аккаунт", "subtitle": "После регистрации администратор откроет вам доступ.", "submit": "Зарегистрироваться", "registration": True})
-
-def pending(request):
-    return render(request, "accounts/pending.html")
+    return render(request, "accounts/form.html", {"form": form, "title": "Создать аккаунт", "subtitle": "После регистрации вы сразу сможете пользоваться календарём.", "submit": "Зарегистрироваться", "registration": True})
 
 @sensitive_post_parameters()
 def login_view(request):
@@ -104,7 +102,7 @@ def password_change(request):
         with transaction.atomic():
             user = form.save(commit=False)
             user.must_change_password = False
-            user.save()
+            user.save(update_fields=["password", "must_change_password"])
         update_session_auth_hash(request, user)
         messages.success(request, "Пароль изменён.")
         return redirect("profile")
@@ -112,17 +110,29 @@ def password_change(request):
 
 @administrator_required
 def users(request):
-    from bookings.series import pending_review_cards
-    pending_events = pending_review_cards(request.user)
-    return render(request, "accounts/users.html", {"pending_events": pending_events, "pending_users": User.objects.filter(is_active=False).order_by("date_joined"), "active_users": User.objects.filter(is_active=True).order_by("last_name", "first_name")})
+    return render(request, "accounts/users.html", {"all_users": User.objects.all().order_by("last_name", "first_name", "username")})
 
 @require_POST
 @administrator_required
-def activate(request, pk):
-    user = get_object_or_404(User, pk=pk)
-    user.is_active = True
-    user.save(update_fields=["is_active"])
-    messages.success(request, "Учётная запись активирована.")
+@transaction.atomic
+def user_access(request, pk, action):
+    from django.http import Http404
+    if action not in {"block", "unblock"}:
+        raise Http404
+    user = get_object_or_404(User.objects.select_for_update(), pk=pk)
+    if user.pk == request.user.pk or user.is_superuser:
+        return HttpResponseForbidden("Учётную запись администратора заблокировать нельзя.")
+    if action == "block":
+        if user.is_active:
+            user.is_active = False
+            user.session_version += 1
+            user.save(update_fields=["is_active", "session_version"])
+        messages.success(request, "Пользователь заблокирован.")
+    else:
+        user.is_active = True
+        user.save(update_fields=["is_active"])
+        LoginAttempt.objects.filter(key=hashlib.sha256(user.username.lower().encode()).hexdigest()).delete()
+        messages.success(request, "Пользователь разблокирован. Он может войти с прежним паролем.")
     return redirect("users")
 
 @administrator_required
@@ -136,7 +146,7 @@ def reset_password(request, pk):
         with transaction.atomic():
             user = form.save(commit=False)
             user.must_change_password = True
-            user.save()
+            user.save(update_fields=["password", "must_change_password"])
             LoginAttempt.objects.filter(key=hashlib.sha256(user.username.lower().encode()).hexdigest()).delete()
         messages.success(request, "Пароль сброшен. Передайте временный пароль пользователю лично. При входе он должен будет его сменить.")
         return redirect("users")
@@ -154,7 +164,8 @@ def profile_edit(request, field):
     if request.method == "POST" and form.is_valid():
         try:
             with transaction.atomic():
-                form.save()
+                user = form.save(commit=False)
+                user.save(update_fields=list(form_class.Meta.fields))
         except IntegrityError:
             form.add_error("username", "Этот логин уже занят.")
         else:

@@ -141,57 +141,53 @@ class BookingTests(TestCase):
         self.other.refresh_from_db()
         self.assertEqual(self.other.username, 'other')
 
-    def test_status_workflow_and_permissions(self):
+    def test_active_cancel_restore_workflow_and_permissions(self):
         event = self.create_event()
-        def action(name):
-            return reverse('event_status', args=[event.pk, name])
-        self.assertEqual(event.status, Event.Status.PENDING)
-        self.assertEqual(self.client.get(action('cancel')).status_code, 405)
-        self.assertEqual(self.client.post(action('confirm')).status_code, 403)
+        self.assertEqual(event.status, Event.Status.ACTIVE)
+        cancel = reverse('event_status', args=[event.pk, 'cancel'])
+        restore = reverse('event_status', args=[event.pk, 'restore'])
+        self.assertEqual(self.client.get(cancel).status_code, 405)
         self.client.force_login(self.other)
-        for name in ['cancel', 'confirm', 'resubmit']:
-            self.assertEqual(self.client.post(action(name)).status_code, 403)
-        self.client.force_login(self.admin)
-        self.assertEqual(self.client.post(action('confirm')).status_code, 302)
-        event.refresh_from_db()
-        self.assertEqual(event.status, Event.Status.CONFIRMED)
+        self.assertEqual(self.client.post(cancel).status_code, 403)
+        self.assertEqual(self.client.post(restore).status_code, 403)
         self.client.force_login(self.author)
-        self.client.post(action('cancel'))
+        self.client.post(cancel)
         event.refresh_from_db()
         self.assertEqual(event.status, Event.Status.CANCELLED)
-        self.assertNotContains(self.client.get(reverse('home'), {'date': self.data['date']}), self.data['title'])
-        self.assertContains(self.client.get(reverse('events_cancelled')), self.data['title'])
-        self.client.post(reverse('event_edit', args=[event.pk]), {**self.data, 'title': 'Исправленная'})
+        self.assertNotContains(self.client.get(reverse('home'), {'date': self.data['date']}), event.title)
+        self.client.post(reverse('event_edit', args=[event.pk]), {**self.data, 'title':'Исправленная'})
         event.refresh_from_db()
         self.assertEqual(event.status, Event.Status.CANCELLED)
-        self.client.post(action('resubmit'))
+        self.client.post(restore)
         event.refresh_from_db()
-        self.assertEqual(event.status, Event.Status.PENDING)
+        self.assertEqual(event.status, Event.Status.ACTIVE)
+        self.assertIsNone(event.cancelled_at)
+        self.assertContains(self.client.get(reverse('home'), {'date': self.data['date']}), event.title)
 
-    def test_author_schedule_changes_require_confirmation_again(self):
+    def test_author_schedule_changes_remain_active(self):
         event = self.create_event()
         url = reverse('event_edit', args=[event.pk])
         for change in [{'date': '2026-11-13'}, {'start_time': '18:15'}, {'end_time': '20:00'}, {'rooms': [self.rooms[2].pk]}]:
-            event.status = Event.Status.CONFIRMED
+            event.status = Event.Status.ACTIVE
             event.save()
             self.client.post(url, {**self.data, **change})
             event.refresh_from_db()
-            self.assertEqual(event.status, Event.Status.PENDING)
+            self.assertEqual(event.status, Event.Status.ACTIVE)
         self.client.post(url, self.data)
         event.refresh_from_db()
-        event.status = Event.Status.CONFIRMED
+        event.status = Event.Status.ACTIVE
         event.save()
         self.client.post(url, {**self.data, 'title': 'Новое название'})
         event.refresh_from_db()
-        self.assertEqual(event.status, Event.Status.CONFIRMED)
+        self.assertEqual(event.status, Event.Status.ACTIVE)
         self.client.force_login(self.admin)
         self.client.post(url, {**self.data, 'date': '2026-11-15'})
         event.refresh_from_db()
-        self.assertEqual(event.status, Event.Status.CONFIRMED)
+        self.assertEqual(event.status, Event.Status.ACTIVE)
 
     def test_conflicts_require_shared_room_and_strict_overlap(self):
         event = self.create_event()
-        def extra(start, end, room, status=Event.Status.PENDING):
+        def extra(start, end, room, status=Event.Status.ACTIVE):
             other = Event.objects.create(title='Другая', date=event.date, start_time=start, end_time=end, author=self.other, responsible=self.other, people_count=3, status=status)
             other.rooms.add(room)
             return other
@@ -204,9 +200,8 @@ class BookingTests(TestCase):
         response = self.client.get(reverse('home'), {'date': self.data['date']})
         self.assertContains(response, '⚠ Пересечение')
         self.client.force_login(self.admin)
-        self.client.post(reverse('event_status', args=[event.pk, 'confirm']))
         event.refresh_from_db()
-        self.assertEqual(event.status, Event.Status.CONFIRMED)
+        self.assertEqual(event.status, Event.Status.ACTIVE)
         event.status = Event.Status.CANCELLED
         event.save()
         self.assertFalse(event.conflicts().exists())
@@ -238,12 +233,14 @@ class BookingTests(TestCase):
             self.assertContains(self.client.get(reverse('event_detail', args=[event.pk])), event.title)
             self.assertEqual(self.client.get(reverse('event_data', args=[event.pk])).json()['people_count'], 7821)
 
-    def test_management_pending_queue_and_cancelled_profile_exclusion(self):
+    def test_management_has_no_approval_queues(self):
         event = self.create_event()
         self.client.force_login(self.admin)
-        self.assertContains(self.client.get(reverse('users')), self.data['title'])
-        self.client.post(reverse('event_status', args=[event.pk, 'confirm']))
-        self.assertNotContains(self.client.get(reverse('users')), self.data['title'])
+        response = self.client.get(reverse('users'))
+        self.assertNotContains(response, 'На подтверждении')
+        self.assertNotContains(response, 'Все события проверены')
+        self.assertNotContains(response, 'Ждут активации')
+        self.assertContains(response, 'Все пользователи')
         self.client.post(reverse('event_status', args=[event.pk, 'cancel']))
         self.client.force_login(self.other)
         self.assertEqual(list(self.client.get(reverse('profile')).context['upcoming_events']), [])
@@ -251,11 +248,11 @@ class BookingTests(TestCase):
     def test_status_actions_require_csrf_and_ignore_posted_status_on_create(self):
         self.client.post(reverse('event_create'), {**self.data, 'status': 'confirmed', 'hide_details': 'on'})
         event = Event.objects.get()
-        self.assertEqual(event.status, Event.Status.PENDING)
+        self.assertEqual(event.status, Event.Status.ACTIVE)
         self.assertTrue(event.hide_details)
         client = Client(enforce_csrf_checks=True)
         client.force_login(self.admin)
-        for name in ['confirm', 'cancel', 'resubmit']:
+        for name in ['cancel', 'restore']:
             self.assertEqual(client.post(reverse('event_status', args=[event.pk, name])).status_code, 403)
 
     def test_cancelled_sorted_by_cancellation_time_not_event_date(self):
@@ -277,7 +274,7 @@ class BookingTests(TestCase):
         self.client.post(reverse('event_edit', args=[first.pk]), {**self.data, 'title': 'Исправление'})
         first.refresh_from_db()
         self.assertEqual(first.cancelled_at, stamp)
-        self.client.post(reverse('event_status', args=[first.pk, 'resubmit']))
+        self.client.post(reverse('event_status', args=[first.pk, 'restore']))
         first.refresh_from_db()
         self.assertIsNone(first.cancelled_at)
 
@@ -293,6 +290,17 @@ class BookingTests(TestCase):
         self.client.force_login(self.admin)
         self.assertEqual(len(self.client.get(reverse('events_cancelled')).context['events']), 2)
         self.assertEqual(self.client.get(reverse('events_cancelled'), {'mine': '1'}).context['events'], [])
+
+    def test_approval_endpoints_removed_and_restore_is_immediate(self):
+        event = self.create_event()
+        for person in [self.author, self.admin]:
+            self.client.force_login(person)
+            for action in ['confirm','resubmit']:
+                self.assertEqual(self.client.post(reverse('event_status',args=[event.pk,action])).status_code,404)
+            response=self.client.get(reverse('event_detail',args=[event.pk]))
+            self.assertNotContains(response,'Подтвердить')
+            self.assertNotContains(response,'Отказать')
+            self.assertNotContains(response,'На подтверждении')
 
 @override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
 class SeriesTests(TestCase):
@@ -317,7 +325,7 @@ class SeriesTests(TestCase):
         self.assertEqual([e.date for e in events], [date(2026, 11, 12), date(2026, 11, 19), date(2026, 11, 26), date(2026, 12, 3)])
         self.assertEqual(len({e.series_id for e in events}), 1)
         self.assertIsNotNone(events[0].series_id)
-        self.assertTrue(all(e.rooms.count() == 2 and e.status == Event.Status.PENDING for e in events))
+        self.assertTrue(all(e.rooms.count() == 2 and e.status == Event.Status.ACTIVE for e in events))
 
     def test_repeat_validation_and_single_occurrence_series(self):
         for until in ['', '2026-11-11', '2040-01-01']:
@@ -337,37 +345,37 @@ class SeriesTests(TestCase):
         self.edit(moved, date='2026-11-10')
         self.client.post(reverse('event_status', args=[moved.pk, 'cancel']), {'scope': 'future'})
         self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 3)
-        self.assertEqual(Event.objects.get(pk=events[0].pk).status, Event.Status.PENDING)
+        self.assertEqual(Event.objects.get(pk=events[0].pk).status, Event.Status.ACTIVE)
 
     def test_future_edit_preserves_previous_and_cancelled_status(self):
         events = self.series()
-        Event.objects.update(status=Event.Status.CONFIRMED)
+        Event.objects.update(status=Event.Status.ACTIVE)
         Event.objects.filter(pk=events[3].pk).update(status=Event.Status.CANCELLED)
         response = self.edit(events[1], date='2026-11-20', start_time='17:00', scope='future', rooms=[self.rooms[2].pk])
         self.assertEqual(response.status_code, 302)
         items = list(Event.objects.order_by('sequence'))
         self.assertEqual(items[0].date, date(2026, 11, 12))
-        self.assertEqual(items[0].status, Event.Status.CONFIRMED)
+        self.assertEqual(items[0].status, Event.Status.ACTIVE)
         self.assertEqual([e.date for e in items[1:]], [date(2026, 11, 20), date(2026, 11, 27), date(2026, 12, 4)])
-        self.assertEqual([e.status for e in items[1:]], [Event.Status.PENDING, Event.Status.PENDING, Event.Status.CANCELLED])
+        self.assertEqual([e.status for e in items[1:]], [Event.Status.ACTIVE, Event.Status.ACTIVE, Event.Status.CANCELLED])
         self.assertTrue(all(list(e.rooms.all()) == [self.rooms[2]] for e in items[1:]))
 
-    def test_admin_future_edit_does_not_reset_confirmation(self):
+    def test_admin_future_edit_remains_active(self):
         events = self.series()
-        Event.objects.update(status=Event.Status.CONFIRMED)
+        Event.objects.update(status=Event.Status.ACTIVE)
         self.client.force_login(self.admin)
         self.edit(events[1], start_time='17:00', scope='future')
-        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 4)
+        self.assertEqual(Event.objects.filter(status=Event.Status.ACTIVE).count(), 4)
 
-    def test_cancel_one_or_future_and_resubmit(self):
+    def test_cancel_one_or_future_and_restore(self):
         events = self.series()
         self.client.post(reverse('event_status', args=[events[1].pk, 'cancel']), {'scope': 'one'})
         self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 1)
         self.client.post(reverse('event_status', args=[events[2].pk, 'cancel']), {'scope': 'future'})
         self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 3)
         self.assertTrue(all(e.cancelled_at for e in Event.objects.filter(status=Event.Status.CANCELLED)))
-        self.client.post(reverse('event_status', args=[events[1].pk, 'resubmit']), {'scope': 'future'})
-        self.assertEqual(Event.objects.filter(status=Event.Status.PENDING).count(), 4)
+        self.client.post(reverse('event_status', args=[events[1].pk, 'restore']), {'scope': 'future'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.ACTIVE).count(), 4)
         self.assertFalse(Event.objects.exclude(cancelled_at=None).exists())
 
     def test_other_user_cannot_mutate_series_and_status_per_occurrence(self):
@@ -376,8 +384,7 @@ class SeriesTests(TestCase):
         self.assertEqual(self.edit(events[0], scope='future').status_code, 403)
         self.assertEqual(self.client.post(reverse('event_status', args=[events[0].pk, 'cancel']), {'scope': 'future'}).status_code, 403)
         self.client.force_login(self.admin)
-        self.client.post(reverse('event_status', args=[events[0].pk, 'confirm']), {'scope': 'future'})
-        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 4)
+        self.assertEqual(Event.objects.filter(status=Event.Status.ACTIVE).count(), 4)
 
     def test_local_time_preserved_across_dst_and_conflicts_per_occurrence(self):
         events = self.series(date='2027-03-21', repeat_until='2027-04-04')
@@ -394,63 +401,24 @@ class SeriesTests(TestCase):
         self.assertContains(self.client.get(reverse('event_edit', args=[events[0].pk])), 'Эта и все последующие встречи')
         self.assertContains(self.client.get(reverse('event_detail', args=[events[0].pk])), 'Еженедельная встреча')
 
-    def test_bulk_confirmation_skips_cancelled_and_previous(self):
-        events = self.series()
-        Event.objects.filter(pk=events[2].pk).update(status=Event.Status.CANCELLED)
-        self.client.force_login(self.admin)
-        response = self.client.post(reverse('event_status', args=[events[1].pk, 'confirm']), {'scope': 'future'})
-        self.assertRedirects(response, reverse('users'))
-        self.assertEqual(list(Event.objects.order_by('sequence').values_list('status', flat=True)), [Event.Status.PENDING, Event.Status.CONFIRMED, Event.Status.CANCELLED, Event.Status.CONFIRMED])
 
-    def test_single_confirmation_is_default_and_series_grouped(self):
-        events = self.series()
-        self.client.force_login(self.admin)
-        response = self.client.get(reverse('users'))
-        cards = response.context['pending_events']
-        self.assertEqual(len(cards), 1)
-        self.assertEqual(cards[0]['count'], 4)
-        self.assertEqual(cards[0]['pk'], events[0].pk)
-        self.assertContains(response, 'На подтверждении: 4')
-        self.client.post(reverse('event_status', args=[events[0].pk, 'confirm']))
-        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 1)
-        response = self.client.get(reverse('users'))
-        self.assertEqual(response.context['pending_events'][0]['pk'], events[1].pk)
-        self.assertEqual(response.context['pending_events'][0]['count'], 3)
 
-    def test_group_representative_preserves_series_order_after_move(self):
-        events = self.series()
-        self.edit(events[2], date='2026-11-01')
-        self.client.force_login(self.admin)
-        card = self.client.get(reverse('users')).context['pending_events'][0]
-        self.assertEqual(card['pk'], events[0].pk)
-        self.assertEqual(card['first_date'], date(2026, 11, 1))
-        self.client.post(reverse('event_status', args=[card['pk'], 'confirm']), {'scope': 'future'})
-        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 4)
 
-    def test_whole_series_confirmation_and_rejection_from_middle(self):
+    def test_cancel_entire_series_from_middle_and_restore_selected(self):
         events = self.series()
-        Event.objects.filter(pk=events[2].pk).update(status=Event.Status.CANCELLED)
-        self.client.force_login(self.admin)
-        response = self.client.get(reverse('event_detail', args=[events[1].pk]))
-        self.assertContains(response, 'name="scope" value="all"', count=2)
-        self.assertNotContains(response, 'Только эта встреча')
-        self.client.post(reverse('event_status', args=[events[1].pk, 'confirm']), {'scope': 'all'})
-        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 3)
-        self.assertEqual(Event.objects.get(pk=events[2].pk).status, Event.Status.CANCELLED)
-        self.client.post(reverse('event_status', args=[events[1].pk, 'cancel']), {'scope': 'all'})
+        self.client.post(reverse('event_status', args=[events[1].pk, 'cancel']), {'scope':'all'})
         self.assertEqual(Event.objects.filter(status=Event.Status.CANCELLED).count(), 4)
+        self.client.post(reverse('event_status', args=[events[1].pk, 'restore']), {'scope':'one'})
+        self.assertEqual(Event.objects.filter(status=Event.Status.ACTIVE).count(), 1)
+        self.assertEqual(Event.objects.get(pk=events[1].pk).status, Event.Status.ACTIVE)
 
-    def test_administrator_creates_confirmed_single_and_series(self):
-        self.client.force_login(self.admin)
-        self.client.post(reverse('event_create'), self.data)
-        self.assertEqual(Event.objects.get().status, Event.Status.CONFIRMED)
-        self.client.post(reverse('event_create'), {**self.data, 'repeat_weekly': 'on', 'repeat_until': '2026-12-03'})
-        self.assertEqual(Event.objects.count(), 5)
-        self.assertEqual(Event.objects.filter(status=Event.Status.CONFIRMED).count(), 5)
-        self.assertEqual(self.client.get(reverse('users')).context['pending_events'], [])
-        self.client.force_login(self.author)
-        self.client.post(reverse('event_create'), {**self.data, 'status': 'confirmed'})
-        self.assertEqual(Event.objects.filter(status=Event.Status.PENDING).count(), 1)
+    def test_all_users_create_active_single_and_series_without_approval(self):
+        for user in [self.admin, self.author]:
+            self.client.force_login(user)
+            self.client.post(reverse('event_create'), {**self.data, 'status':'pending'})
+            self.client.post(reverse('event_create'), {**self.data, 'repeat_weekly':'on', 'repeat_until':'2026-12-03'})
+        self.assertEqual(Event.objects.count(), 10)
+        self.assertEqual(Event.objects.filter(status=Event.Status.ACTIVE).count(), 10)
 
     def test_room_rename_preserves_existing_bookings(self):
         import importlib

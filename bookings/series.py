@@ -34,7 +34,7 @@ def create_events(form, user):
     series = EventSeries.objects.create() if data.get('repeat_weekly') else None
     result = []
     for index, day in enumerate(dates):
-        event = Event(**{key: data[key] for key in FIELDS if key != 'date'}, date=day, author=user, series=series, sequence=index if series else None, status=Event.Status.CONFIRMED if user.is_administrator else Event.Status.PENDING)
+        event = Event(**{key: data[key] for key in FIELDS if key != 'date'}, date=day, author=user, series=series, sequence=index if series else None, status=Event.Status.ACTIVE)
         event.full_clean()
         event.save()
         event.rooms.set(data['rooms'])
@@ -47,25 +47,18 @@ def update_events(event, form, user, original):
     batch = targets(event, data.get('scope', 'one'))
     shift = data['date'] - original['date']
     rooms = list(data['rooms'])
-    room_ids = {room.pk for room in rooms}
     prepared = []
     for item in batch:
         if not item.can_edit(user):
             raise ValidationError('Нет прав на изменение одной из встреч серии.')
         # ModelForm has already mutated selected occurrence: use the captured original.
         old_date = original['date'] if item.pk == event.pk else item.date
-        old_start = original['start_time'] if item.pk == event.pk else item.start_time
-        old_end = original['end_time'] if item.pk == event.pk else item.end_time
-        old_rooms = original['rooms'] if item.pk == event.pk else set(item.rooms.values_list('pk', flat=True))
         try:
             new_date = old_date + shift
         except OverflowError:
             raise ValidationError('Перенос выходит за допустимый диапазон дат.') from None
-        schedule_changed = (old_date, old_start, old_end, old_rooms) != (new_date, data['start_time'], data['end_time'], room_ids)
         for key in FIELDS:
             setattr(item, key, new_date if key == 'date' else data[key])
-        if item.status == Event.Status.CONFIRMED and not user.is_administrator and schedule_changed:
-            item.status = Event.Status.PENDING
         item.full_clean()
         prepared.append(item)
     for item in prepared:
@@ -79,43 +72,18 @@ def set_status(event, action, scope, user):
     stamp = timezone.now()
     count = 0
     for item in batch:
-        if action != 'confirm' and not item.can_edit(user):
+        if not item.can_edit(user):
             raise ValidationError('Нет прав на изменение одной из встреч серии.')
         if action == 'cancel':
             if item.status == Event.Status.CANCELLED:
                 continue
             item.status, item.cancelled_at = Event.Status.CANCELLED, stamp
-        elif action == 'resubmit':
+        elif action == 'restore':
             if item.status != Event.Status.CANCELLED:
                 continue
-            item.status, item.cancelled_at = Event.Status.PENDING, None
+            item.status, item.cancelled_at = Event.Status.ACTIVE, None
         else:
-            if item.status != Event.Status.PENDING:
-                continue
-            item.status = Event.Status.CONFIRMED
+            raise ValidationError('Неизвестное действие.')
         item.save(update_fields=['status', 'cancelled_at', 'updated_at'])
         count += 1
     return count
-
-
-def pending_review_cards(user):
-    events = Event.objects.filter(status=Event.Status.PENDING).select_related('author', 'responsible').prefetch_related('rooms')
-    groups = {}
-    for event in events:
-        key = ('series', event.series_id) if event.series_id else ('event', event.pk)
-        conflict = event.conflicts().exists()
-        if key not in groups:
-            groups[key] = {'representative': event, 'count': 0, 'first_date': event.date, 'last_date': event.date, 'conflict_count': 0}
-        group = groups[key]
-        if event.series_id and event.sequence < group['representative'].sequence:
-            group['representative'] = event
-        group['count'] += 1
-        group['first_date'] = min(group['first_date'], event.date)
-        group['last_date'] = max(group['last_date'], event.date)
-        group['conflict_count'] += int(conflict)
-    cards = []
-    for group in groups.values():
-        card = group['representative'].visible_to(user, group['conflict_count'] > 0)
-        card.update({key: value for key, value in group.items() if key != 'representative'})
-        cards.append(card)
-    return sorted(cards, key=lambda card: (card['first_date'], card['start_time'], card['pk']))

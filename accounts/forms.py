@@ -22,7 +22,7 @@ class RegistrationForm(UserCreationForm):
 
     def save(self, commit=True):
         user = super().save(commit=False)
-        user.is_active = False
+        user.is_active = True
         if commit:
             user.save()
         return user
@@ -30,7 +30,7 @@ class RegistrationForm(UserCreationForm):
 class LoginForm(AuthenticationForm):
     username = forms.CharField(label="Логин", max_length=150, widget=forms.TextInput(attrs={"autocomplete": "username", "autocapitalize": "none"}))
     password = forms.CharField(label="Пароль", strip=False, widget=forms.PasswordInput(attrs={"autocomplete": "current-password"}))
-    error_messages = {"invalid_login": "Проверьте логин и пароль. Если вы только зарегистрировались, дождитесь активации администратором.", "inactive": "Учётная запись ещё не активирована."}
+    error_messages = {"invalid_login": "Неверный логин или пароль, либо учётная запись заблокирована.", "inactive": "Учётная запись заблокирована. Обратитесь к администратору."}
 
     def clean_username(self):
         return self.cleaned_data["username"].strip().lower()

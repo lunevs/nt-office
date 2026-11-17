@@ -24,11 +24,10 @@ class Event(models.Model):
     sequence = models.PositiveIntegerField(null=True, blank=True)
 
     class Status(models.TextChoices):
-        PENDING = "pending", "На подтверждении"
-        CONFIRMED = "confirmed", "Подтверждено"
+        ACTIVE = "active", "Запланировано"
         CANCELLED = "cancelled", "Отменено"
 
-    status = models.CharField("Статус", max_length=12, choices=Status.choices, default=Status.PENDING, db_index=True)
+    status = models.CharField("Статус", max_length=12, choices=Status.choices, default=Status.ACTIVE, db_index=True)
     hide_details = models.BooleanField("Private (не публиковать детали)", default=False)
 
     title = models.CharField("Название", max_length=160)
@@ -46,6 +45,7 @@ class Event(models.Model):
     class Meta:
         ordering = ["date", "start_time", "pk"]
         constraints = [
+            models.CheckConstraint(condition=models.Q(status__in=["active", "cancelled"]), name="event_valid_status"),
             models.UniqueConstraint(fields=["series", "sequence"], name="unique_series_occurrence"),
             models.CheckConstraint(condition=models.Q(end_time__gt=models.F("start_time")), name="event_positive_duration"),
             models.CheckConstraint(condition=models.Q(start_time__gte=time(6), end_time__lte=time(23)), name="event_office_hours"),

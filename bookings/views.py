@@ -69,7 +69,7 @@ def create(request):
 def edit(request, pk):
     get_object_or_404(Event, pk=pk)
     event = lock_event(pk)
-    original = {"date": event.date, "start_time": event.start_time, "end_time": event.end_time, "rooms": set(event.rooms.values_list("pk", flat=True))}
+    original = {"date": event.date}
     if not event.can_edit(request.user):
         return HttpResponseForbidden("Изменить мероприятие могут только автор и администратор.")
     form = EventForm(request.POST if request.method == "POST" else None, instance=event)
@@ -94,26 +94,16 @@ def change_status(request, pk, action):
     scope = request.POST.get("scope", "one")
     if scope not in {"one", "future", "all"}:
         return JsonResponse({"error": "Некорректная область изменения."}, status=400)
-    if action == "confirm":
-        if not request.user.is_administrator:
-            return HttpResponseForbidden("Подтверждение доступно только администратору.")
-        if event.status != Event.Status.PENDING:
-            messages.error(request, "Подтвердить можно только мероприятие на подтверждении.")
-            return redirect("event_detail", pk=event.pk)
-    elif action in {"cancel", "resubmit"}:
-        if not event.can_edit(request.user):
-            return HttpResponseForbidden("Доступ только автору и администратору.")
-        if action == "resubmit" and event.status != Event.Status.CANCELLED:
-            messages.error(request, "Повторно отправить можно только отменённое мероприятие.")
-            return redirect("event_detail", pk=event.pk)
-    else:
+    if action not in {"cancel", "restore"}:
         from django.http import Http404
         raise Http404
-    affected = set_status(event, action, scope, request.user)
-    if action == "confirm" and scope in {"future", "all"} and event.series_id:
-        messages.success(request, f"Подтверждено встреч: {affected}.")
-        return redirect("users")
-    messages.success(request, {"confirm": "Мероприятие подтверждено.", "cancel": "Мероприятие отменено.", "resubmit": "Мероприятие отправлено на подтверждение."}[action])
+    if not event.can_edit(request.user):
+        return HttpResponseForbidden("Доступ только автору и администратору.")
+    if action == "restore" and event.status != Event.Status.CANCELLED:
+        messages.error(request, "Восстановить можно только отменённое мероприятие.")
+        return redirect("event_detail", pk=event.pk)
+    set_status(event, action, scope, request.user)
+    messages.success(request, "Мероприятие отменено." if action == "cancel" else "Мероприятие восстановлено.")
     return redirect("event_detail", pk=event.pk)
 
 @login_required

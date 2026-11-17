@@ -18,12 +18,11 @@ urlpatterns = [
     path("healthz/", views.health, name="health"),
     path("login/", views.login_view, name="login"),
     path("register/", views.register, name="register"),
-    path("pending/", views.pending, name="pending"),
     path("logout/", views.logout_view, name="logout"),
     path("profile/", views.profile, name="profile"),
     path("profile/edit/<str:field>/", views.profile_edit, name="profile_edit"),
     path("password/", views.password_change, name="password_change"),
     path("management/", views.users, name="users"),
-    path("management/<int:pk>/activate/", views.activate, name="activate"),
+    path("management/<int:pk>/access/<str:action>/", views.user_access, name="user_access"),
     path("management/<int:pk>/reset-password/", views.reset_password, name="reset_password"),
 ]
