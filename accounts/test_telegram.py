@@ -3,10 +3,12 @@ import hmac
 import json
 import time
 from datetime import date, time as dtime
+from io import StringIO
 from unittest.mock import patch
 from urllib.parse import urlencode
 
 from django.contrib.auth import get_user_model
+from django.core.management import call_command
 from django.test import TestCase, override_settings
 from django.urls import reverse
 
@@ -197,3 +199,24 @@ class TelegramBotTests(TestCase):
         self.assertEqual(method, "sendMessage")
         self.assertEqual(payload["text"], "<b>Заголовок &lt;b&gt;</b>\nТекст &amp; детали")
         self.assertEqual(payload["reply_markup"]["inline_keyboard"][0][0]["text"], "Открыть")
+
+
+class TelegramSetupTests(TestCase):
+    @override_settings(TELEGRAM_BOT_TOKEN=TOKEN, SITE_URL="https://office.example", TELEGRAM_WEBHOOK_SECRET="hook-secret")
+    @patch("accounts.telegram.call", return_value={"ok": True})
+    def test_setup_registers_webhook_menu_and_commands(self, call):
+        call_command("telegram_setup", "--if-configured", stdout=StringIO())
+        methods = {c.args[0]: c.args[1] for c in call.call_args_list}
+        self.assertEqual(list(methods), ["setWebhook", "setChatMenuButton", "setMyCommands"])
+        self.assertEqual(methods["setWebhook"]["url"], "https://office.example/telegram/webhook/")
+        self.assertEqual(methods["setWebhook"]["secret_token"], "hook-secret")
+        self.assertFalse(methods["setWebhook"]["drop_pending_updates"])
+        self.assertEqual(methods["setChatMenuButton"]["menu_button"]["web_app"]["url"], "https://office.example/tg/")
+
+    @override_settings(TELEGRAM_BOT_TOKEN="", SITE_URL="")
+    @patch("accounts.telegram.call")
+    def test_startup_skips_when_telegram_is_not_configured(self, call):
+        out = StringIO()
+        call_command("telegram_setup", "--if-configured", stdout=out)
+        call.assert_not_called()
+        self.assertIn("пропускаю", out.getvalue())
