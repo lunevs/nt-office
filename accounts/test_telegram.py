@@ -161,7 +161,7 @@ class TelegramBotTests(TestCase):
 
     @patch("accounts.telegram.call")
     def test_start_command_replies_with_app_button(self, call):
-        self.hook({"message": {"text": "/start", "chat": {"id": 42}}})
+        self.hook({"message": {"text": "/start", "chat": {"id": 42, "type": "private"}}})
         method, payload = call.call_args[0]
         self.assertEqual(method, "sendMessage")
         self.assertEqual(payload["reply_markup"]["inline_keyboard"][0][0]["web_app"]["url"], "https://office.example/tg/")
@@ -187,9 +187,10 @@ class TelegramBotTests(TestCase):
     def test_notification_switches_are_saved(self):
         self.client.force_login(self.member)
         self.assertContains(self.client.get(reverse("profile")), "Уведомления от бота")
+        self.assertContains(self.client.get(reverse("profile")), 'name="notify_digest" checked')
         self.client.post(reverse("profile_notifications"), {"notify_events": "on", "notify_requests": "on"})
         self.member.refresh_from_db()
-        self.assertEqual((self.member.notify_messages, self.member.notify_events, self.member.notify_requests), (False, True, True))
+        self.assertEqual((self.member.notify_messages, self.member.notify_events, self.member.notify_requests, self.member.notify_digest), (False, True, True, False))
 
     def test_send_builds_message_after_commit(self):
         with patch("accounts.telegram.call") as call, patch("threading.Thread") as thread, self.captureOnCommitCallbacks(execute=True):
@@ -208,6 +209,7 @@ class TelegramSetupTests(TestCase):
         call_command("telegram_setup", "--if-configured", stdout=StringIO())
         methods = {c.args[0]: c.args[1] for c in call.call_args_list}
         self.assertEqual(list(methods), ["setWebhook", "setChatMenuButton", "setMyCommands"])
+        self.assertEqual([c["command"] for c in methods["setMyCommands"]["commands"]], ["start", "today"])
         self.assertEqual(methods["setWebhook"]["url"], "https://office.example/telegram/webhook/")
         self.assertEqual(methods["setWebhook"]["secret_token"], "hook-secret")
         self.assertFalse(methods["setWebhook"]["drop_pending_updates"])
@@ -220,3 +222,72 @@ class TelegramSetupTests(TestCase):
         call_command("telegram_setup", "--if-configured", stdout=out)
         call.assert_not_called()
         self.assertIn("пропускаю", out.getvalue())
+
+
+@override_settings(TELEGRAM_BOT_TOKEN=TOKEN, SITE_URL="https://office.example", TELEGRAM_WEBHOOK_SECRET="hook-secret", STORAGES=STATIC)
+class MorningDigestTests(TestCase):
+    """Утренняя сводка «Сегодня в офисе» в личку (макеты T8, T7)."""
+
+    def setUp(self):
+        from bookings.models import Event, Room
+        from django.utils import timezone as tz
+        self.day = date(2030, 1, 10)
+        self.at = lambda h, m=0: tz.make_aware(__import__("datetime").datetime(2030, 1, 10, h, m))
+        self.admin = User.objects.create_superuser("admin", password=PASSWORD, first_name="Иван", telegram_id=900)
+        self.member = User.objects.create_user("member", password=PASSWORD, first_name="Анна", telegram_id=901)
+        self.quiet = User.objects.create_user("quiet", password=PASSWORD, telegram_id=902, notify_digest=False)
+        self.offline = User.objects.create_user("offline", password=PASSWORD)
+        rooms = list(Room.objects.all()[:2])
+        self.prayer = Event.objects.create(title="Утренняя молитва", date=self.day, start_time=dtime(8), end_time=dtime(9), people_count=5, author=self.admin, responsible=self.admin)
+        self.prayer.rooms.add(rooms[0])
+        self.private = Event.objects.create(title="Личная встреча", date=self.day, start_time=dtime(14), end_time=dtime(15), people_count=2, author=self.admin, responsible=self.admin, hide_details=True)
+        self.private.rooms.add(*rooms)
+        cancelled = Event.objects.create(title="Отменённая", date=self.day, start_time=dtime(10), end_time=dtime(11), people_count=2, author=self.admin, responsible=self.admin, status=Event.Status.CANCELLED)
+        cancelled.rooms.add(rooms[0])
+        self.rooms = rooms
+
+    def hook(self, update):
+        return self.client.post(reverse("telegram_webhook"), json.dumps(update), content_type="application/json", HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="hook-secret")
+
+    def test_message_follows_mockup_and_hides_private_details(self):
+        from accounts import digest
+        title, body = digest.digest_message(self.day, self.member)
+        self.assertEqual(title, "Сегодня в офисе · четверг, 10 января")
+        self.assertEqual(body, f"08:00–09:00 · Утренняя молитва\n{self.rooms[0].name}\n\n14:00–15:00 · Занято\n{self.rooms[0].name}, {self.rooms[1].name}")
+        self.assertIn("Личная встреча", digest.digest_message(self.day, self.admin)[1])
+
+    @patch("accounts.telegram.call", return_value={"ok": True})
+    def test_sent_once_at_eight_to_linked_users_who_want_it(self, call):
+        from accounts import digest
+        self.assertEqual(digest.run_due(self.at(7, 59)), 0)
+        call.assert_not_called()
+        self.assertEqual(digest.run_due(self.at(8, 1)), 2)
+        chats = sorted(c.args[1]["chat_id"] for c in call.call_args_list)
+        self.assertEqual(chats, [900, 901])
+        payload = call.call_args_list[0].args[1]
+        self.assertTrue(payload["text"].startswith("<b>Сегодня в офисе · четверг, 10 января</b>"))
+        self.assertEqual(payload["reply_markup"]["inline_keyboard"][0][0], {"text": "Открыть расписание", "web_app": {"url": "https://office.example/tg/"}})
+        call.reset_mock()
+        self.assertEqual(digest.run_due(self.at(8, 2)), 0)  # второй процесс или следующая минута — без повтора
+        call.assert_not_called()
+
+    @patch("accounts.telegram.call", return_value={"ok": True})
+    def test_no_digest_on_empty_days_or_late_start(self, call):
+        from accounts import digest
+        from bookings.models import Event
+        self.assertEqual(digest.run_due(self.at(11, 30)), 0)
+        Event.objects.filter(date=self.day).delete()
+        self.assertEqual(digest.run_due(self.at(8, 30)), 0)
+        call.assert_not_called()
+
+    @patch("accounts.telegram.call", return_value={"ok": True})
+    def test_today_command_in_private_chat(self, call):
+        from django.utils import timezone as tz
+        with patch("accounts.digest.timezone.localdate", return_value=self.day):
+            self.hook({"message": {"text": "/today", "chat": {"id": 901, "type": "private"}}})
+        self.assertIn("Утренняя молитва", call.call_args.args[1]["text"])
+        self.hook({"message": {"text": "/today", "chat": {"id": 555, "type": "private"}}})
+        self.assertIn("Сначала откройте приложение", call.call_args.args[1]["text"])
+        call.reset_mock()
+        self.hook({"message": {"text": "/today", "chat": {"id": -100, "type": "group"}}})
+        call.assert_not_called()

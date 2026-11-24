@@ -17,6 +17,7 @@ class User(AbstractUser):
     notify_messages = models.BooleanField("Уведомлять о сообщениях", default=True)
     notify_events = models.BooleanField("Уведомлять об изменениях моих встреч", default=True)
     notify_requests = models.BooleanField("Уведомлять о заявках на доступ", default=True)
+    notify_digest = models.BooleanField("Утренняя сводка в Telegram", default=True)
 
     def _versioned_session_hash(self, value):
         if not self.session_version:
@@ -52,3 +53,15 @@ class LoginAttempt(models.Model):
     key = models.CharField(max_length=64, unique=True)
     attempts = models.PositiveIntegerField(default=0)
     started_at = models.DateTimeField()
+
+
+
+class DailyDigest(models.Model):
+    """Отметка, что утренняя сводка за день разослана: из нескольких процессов отправит только один."""
+    day = models.DateField("День", unique=True)
+    sent_at = models.DateTimeField("Разослано", auto_now_add=True)
+    recipients = models.PositiveIntegerField("Получателей", default=0)
+
+    class Meta:
+        verbose_name = "утренняя сводка"
+        verbose_name_plural = "утренние сводки"

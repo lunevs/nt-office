@@ -9,12 +9,13 @@ from django.db import IntegrityError, transaction
 from django.http import HttpResponse, HttpResponseForbidden, JsonResponse
 from django.shortcuts import redirect, render
 from django.urls import reverse
+from django.utils import timezone
 from django.utils.crypto import constant_time_compare
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
-from . import access, telegram
+from . import access, digest, telegram
 from .forms import LoginForm, TelegramJoinForm
 
 User = get_user_model()
@@ -146,7 +147,7 @@ def unlink(request):
 @require_POST
 def notifications(request):
     """T7: переключатели уведомлений бота."""
-    fields = ["notify_messages", "notify_events"] + (["notify_requests"] if request.user.is_administrator else [])
+    fields = ["notify_messages", "notify_events", "notify_digest"] + (["notify_requests"] if request.user.is_administrator else [])
     for field in fields:
         setattr(request.user, field, request.POST.get(field) == "on")
     request.user.save(update_fields=fields)
@@ -167,12 +168,18 @@ def webhook(request):
     except ValueError:
         return HttpResponse(status=400)
     message = update.get("message") or {}
-    if message.get("text", "").startswith("/start"):
+    chat = message.get("chat") or {}
+    command = (message.get("text", "").split() or [""])[0]
+    if chat.get("type") != "private":
+        command = ""  # бот работает только в личных чатах
+    if command == "/start":
+        payload = {"chat_id": chat["id"], "text": "Здравствуйте! Это бот офиса New Territory: календарь помещений, бронирование и сообщения. Откройте приложение кнопкой ниже."}
         url = telegram.app_url("/tg/")
-        payload = {"chat_id": message["chat"]["id"], "text": "Здравствуйте! Это бот офиса New Territory: календарь помещений, бронирование и сообщения. Откройте приложение кнопкой ниже."}
         if url:
             payload["reply_markup"] = {"inline_keyboard": [[{"text": "Открыть календарь", "web_app": {"url": url}}]]}
         telegram.call("sendMessage", payload)
+    elif command == "/today":
+        digest.send_today(chat["id"])
     callback = update.get("callback_query")
     if callback:
         _handle_callback(callback)

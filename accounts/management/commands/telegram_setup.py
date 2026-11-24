@@ -23,7 +23,7 @@ class Command(BaseCommand):
         steps = [
             ("setWebhook", {"url": settings.SITE_URL + reverse("telegram_webhook"), "secret_token": settings.TELEGRAM_WEBHOOK_SECRET, "allowed_updates": ["message", "callback_query"], "drop_pending_updates": False}),
             ("setChatMenuButton", {"menu_button": {"type": "web_app", "text": "Календарь", "web_app": {"url": settings.SITE_URL + reverse("telegram_entry")}}}),
-            ("setMyCommands", {"commands": [{"command": "start", "description": "Открыть календарь офиса"}]}),
+            ("setMyCommands", {"commands": [{"command": "start", "description": "Открыть календарь офиса"}, {"command": "today", "description": "Сводка «Сегодня в офисе»"}]}),
         ]
         for method, payload in steps:
             result = telegram.call(method, payload, timeout=10)

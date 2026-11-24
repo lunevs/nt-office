@@ -37,6 +37,7 @@
     {% csrf_token %}
     <label class="switch-row list-switch"><span><b>Новые сообщения</b><small>Кто написал и начало сообщения</small></span><input type="checkbox" name="notify_messages"{% if user.notify_messages %} checked{% endif %}><span class="switch" aria-hidden="true"></span></label>
     <label class="switch-row list-switch"><span><b>Мои встречи</b><small>Если встречу, где вы ответственный, изменили или отменили</small></span><input type="checkbox" name="notify_events"{% if user.notify_events %} checked{% endif %}><span class="switch" aria-hidden="true"></span></label>
+    <label class="switch-row list-switch"><span><b>Утренняя сводка</b><small>Каждый день в 8:00 — встречи на сегодня</small></span><input type="checkbox" name="notify_digest"{% if user.notify_digest %} checked{% endif %}><span class="switch" aria-hidden="true"></span></label>
     {% if user.is_administrator %}<label class="switch-row list-switch"><span><b>Заявки на доступ</b><small>Только у администратора</small></span><input type="checkbox" name="notify_requests"{% if user.notify_requests %} checked{% endif %}><span class="switch" aria-hidden="true"></span></label>{% endif %}
     <noscript><button class="button secondary button-m" type="submit">Сохранить</button></noscript>
   </form>
