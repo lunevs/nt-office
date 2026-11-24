@@ -63,17 +63,16 @@
 
 
   <div class="cal-main">
-  {% if event_count %}
-    <div class="timeline-card">
+    {# Шкала — весь рабочий день 06:00–23:00 (макеты 01, 01в, 20, 23); прокручивается к текущему часу или первой встрече. #}
+    <div class="timeline-card" data-timeline-scroll="{{ scroll_top|stringformat:'.2f' }}" data-timeline-scroll-wide="{{ scroll_top_wide|stringformat:'.2f' }}">
+      {% if not event_count %}<div class="timeline-hint"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#calendar"/></svg><div><b>Свободно весь день</b><span>Нажмите на время, чтобы забронировать</span></div></div>{% endif %}
       <div class="timeline" style="--th:{{ height|stringformat:'.2f' }}" aria-label="Расписание на {{ day|date:'j E Y' }}">
         {% for hour in hours %}<div class="hour-line" style="--top:{{ hour.top|stringformat:'.2f' }}"><span>{{ hour.label }}</span></div>{% endfor %}
+        <div class="slot-track">{% for slot in slots %}<a class="hour-slot" href="{% url 'event_create' %}?date={{ day|date:'Y-m-d' }}&amp;start={{ slot.start }}" style="--top:{{ slot.top|stringformat:'.2f' }};--h:{{ slot.height|stringformat:'.2f' }}" aria-label="Забронировать на {{ slot.start }}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#plus"/></svg>{{ slot.start }}</a>{% endfor %}</div>
         {% if now_top is not None %}<div class="now-marker" style="--top:{{ now_top|stringformat:'.2f' }}"><span class="now-pill">{{ now_label }}</span></div>{% endif %}
         <div class="event-track">{% for group in groups %}<div class="event-group{% if group.stacked %} dense-group{% endif %}" style="--top:{{ group.top|stringformat:'.2f' }};--h:{{ group.height|stringformat:'.2f' }}">{% for card in group.cards %}{% include 'bookings/_event_card.html' with event=card.event card=card positioned=group.stacked|yesno:',1' %}{% endfor %}</div>{% endfor %}</div>
       </div>
     </div>
-  {% else %}
-    {% include 'bookings/_empty_day.html' %}
-  {% endif %}
   </div>
 
 

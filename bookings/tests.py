@@ -93,21 +93,50 @@ class BookingTests(TestCase):
         self.assertTrue(layout['groups'][0]['stacked'])
         self.assertGreaterEqual(layout['groups'][0]['height'], 3 * 84)
         self.assertFalse(layout['groups'][1]['stacked'])
-        self.assertEqual(layout['hours'][0]['label'], '10:00')
-        self.assertEqual(layout['hours'][-1]['label'], '12:00')
+        self.assertEqual(layout['hours'][0]['label'], '06:00')
+        self.assertEqual(layout['hours'][-1]['label'], '23:00')
 
-    def test_empty_day_has_no_timeline(self):
+    def test_empty_day_shows_whole_working_day(self):
         response = self.client.get(reverse('home'), {'date': '2026-11-12'})
-        self.assertContains(response, 'Мероприятий не запланировано')
-        self.assertNotContains(response, 'class="timeline"')
+        self.assertContains(response, 'class="timeline"')
+        self.assertContains(response, 'Свободно весь день')
+        self.assertContains(response, '/events/new/?date=2026-11-12&amp;start=06:00')
+        self.assertContains(response, '/events/new/?date=2026-11-12&amp;start=22:00')
+        self.assertNotContains(response, 'start=23:00')
+        layout = response.context
+        self.assertEqual([h['label'] for h in layout['hours']][:2], ['06:00', '07:00'])
+        self.assertEqual(layout['scroll_top'], round(3 * 64, 2))  # открывается на 09:00
+        self.assertEqual(layout['scroll_top_wide'], round(1 * 64, 2))
 
-    def test_timeline_trims_to_exact_event_bounds(self):
+    def test_timeline_covers_office_hours_and_scrolls_to_first_event(self):
         layout = day_layout([Event(start_time=time(18, 15), end_time=time(19, 45))])
-        self.assertEqual(layout['hours'][0]['label'], '18:15')
-        self.assertEqual(layout['hours'][-1]['label'], '19:45')
-        self.assertEqual(layout['groups'][0]['top'], 0)
-        self.assertEqual(layout['height'], layout['groups'][0]['height'])
-        self.assertLess(layout['height'], 140)
+        self.assertEqual(layout['hours'][0]['label'], '06:00')
+        self.assertEqual(layout['hours'][-1]['label'], '23:00')
+        self.assertEqual(len(layout['hours']), 18)
+        self.assertEqual(len(layout['slots']), 17)
+        self.assertEqual(layout['groups'][0]['top'], round((18 * 60 + 15 - 360) * 64 / 60, 2))
+        self.assertEqual(layout['scroll_top'], round(12 * 64, 2))  # к 18:00
+        self.assertEqual(layout['scroll_top_wide'], round(10 * 64, 2))
+
+    def test_today_scrolls_to_current_hour_and_hides_past_slots(self):
+        layout = day_layout([Event(start_time=time(10), end_time=time(12))], now_minute=10 * 60 + 40)
+        self.assertEqual(layout['slots'][0]['start'], '10:00')
+        self.assertEqual(len(layout['slots']), 13)
+        self.assertIsNotNone(layout['now_top'])
+        self.assertEqual(layout['scroll_top'], round(4 * 64, 2))
+        early = day_layout([], now_minute=5 * 60)
+        self.assertEqual(early['scroll_top'], 0)
+        self.assertIsNone(early['now_top'])
+
+    def test_free_hour_prefills_booking_start(self):
+        response = self.client.get(reverse('event_create'), {'date': '2026-11-12', 'start': '13:00'})
+        form = response.context['form']
+        self.assertEqual(form.initial['start_time'], '13:00')
+        self.assertEqual(form.initial['end_time'], '14:30')
+        late = self.client.get(reverse('event_create'), {'date': '2026-11-12', 'start': '22:00'}).context['form']
+        self.assertEqual((late.initial['start_time'], late.initial['end_time']), ('22:00', '23:00'))
+        bogus = self.client.get(reverse('event_create'), {'date': '2026-11-12', 'start': '03:00'}).context['form']
+        self.assertEqual(bogus.initial['start_time'], '10:00')
 
     def test_profile_shows_three_nearest_responsible_meetings(self):
         from unittest.mock import patch

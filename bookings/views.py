@@ -1,3 +1,4 @@
+import re
 from datetime import date, timedelta
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -157,7 +158,12 @@ def create(request):
     # Как в макете 04: начало — ближайшие полчаса (для другого дня — 10:00), длительность 1,5 ч.
     now = timezone.localtime()
     start = min(max(((now.hour * 60 + now.minute) // 30 + 1) * 30 if day == timezone.localdate() else 600, 360), 21 * 60 + 30)
-    initial = {"date": day, "responsible": request.user, "people_count": 1, "start_time": f"{start // 60:02}:{start % 60:02}", "end_time": f"{(start + 90) // 60:02}:{(start + 90) % 60:02}"}
+    # Нажатие на свободный час на шкале (макет 01в) передаёт его начало: ?start=13:00.
+    requested = re.fullmatch(r"([01]\d|2[0-3]):([0-5]\d)", request.GET.get("start", ""))
+    if requested and 360 <= int(requested[1]) * 60 + int(requested[2]) <= 22 * 60:
+        start = int(requested[1]) * 60 + int(requested[2])
+    end = min(start + 90, 23 * 60)
+    initial = {"date": day, "responsible": request.user, "people_count": 1, "start_time": f"{start // 60:02}:{start % 60:02}", "end_time": f"{end // 60:02}:{end % 60:02}"}
     form = EventForm(request.POST if request.method == "POST" else None, initial=initial, user=request.user)
     if request.method == "POST" and form.is_valid():
         events = create_events(form, request.user)
