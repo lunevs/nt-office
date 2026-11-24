@@ -24,6 +24,28 @@
       badge.hidden = data.unread === 0;
     });
   };
+  // «Отправлено» — одна галочка, «Прочитано» — две (макеты 06 и 26)
+  const icons = thread.dataset.icons;
+  const tick = (read) => {
+    const mark = document.createElement('span');
+    mark.className = 'message-tick';
+    mark.innerHTML = `<svg class="icon" aria-hidden="true"><use href="${icons}#check"/></svg><span class="visually-hidden">Отправлено</span>`;
+    if (read) setRead(mark);
+    else mark.title = 'Отправлено';
+    return mark;
+  };
+  const setRead = (mark) => {
+    mark.classList.add('is-read');
+    mark.title = 'Прочитано';
+    mark.querySelector('use').setAttribute('href', `${icons}#check-double`);
+    mark.querySelector('.visually-hidden').textContent = 'Прочитано';
+  };
+  const markOwnRead = (through) => {
+    if (!through) return;
+    stream.querySelectorAll('.own-message .message-tick:not(.is-read)').forEach((mark) => {
+      if (Number(mark.closest('[data-message-id]').dataset.messageId) <= through) setRead(mark);
+    });
+  };
   const scrollToLatest = () => {
     const last = stream.lastElementChild;
     if (last) last.scrollIntoView({block: 'nearest'});
@@ -44,13 +66,19 @@
           bubble.className = `message-bubble ${item.own ? 'own-message' : 'incoming-message'}`;
           const text = document.createElement('p');
           text.textContent = item.text;
+          bubble.dataset.messageId = item.id;
+          const meta = document.createElement('span');
+          meta.className = 'message-meta';
           const time = document.createElement('time');
           time.textContent = item.time;
-          bubble.append(text, time);
+          meta.append(time);
+          if (item.own) meta.append(tick(item.read));
+          bubble.append(text, meta);
           stream.append(bubble);
           cursor = item.id;
         }
         if (nearBottom && data.messages.length) scrollToLatest();
+        markOwnRead(data.read_through);
       }
       await markRead();
       status.textContent = '';

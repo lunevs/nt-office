@@ -90,7 +90,9 @@ def updates(request, pk):
     person = participant(request, pk)
     after = positive_id(request.GET.get('after'))
     items = pair_messages(request.user, person).filter(pk__gt=after).order_by('pk')[:100]
-    return JsonResponse({'messages': [{'id': item.pk, 'text': item.text, 'own': item.sender_id == request.user.pk, 'time': timezone.localtime(item.created_at).strftime('%H:%M')} for item in items]})
+    # Собеседник читает переписку по порядку: всё до этого номера у отправителя отмечается «Прочитано».
+    read_through = Message.objects.filter(sender=request.user, recipient=person, read_at__isnull=False).aggregate(last=Max('pk'))['last'] or 0
+    return JsonResponse({'read_through': read_through, 'messages': [{'id': item.pk, 'text': item.text, 'own': item.sender_id == request.user.pk, 'read': item.read_at is not None, 'time': timezone.localtime(item.created_at).strftime('%H:%M')} for item in items]})
 
 @login_required
 @never_cache

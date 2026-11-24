@@ -1190,6 +1190,10 @@ fieldset.panel > .field-error { margin-top: 12px; }
 .message-bubble time { margin: 0; font-size: 12px; line-height: 16px; letter-spacing: 0; color: var(--text-secondary); text-align: left; }
 .own-message { align-self: flex-end; border-radius: 20px 20px 6px 20px; background: var(--accent); color: var(--text-on-accent); }
 .own-message time { color: rgb(255 255 255 / .75); }
+/* Галочки у своих сообщений: одна — отправлено, две — прочитано (макеты 06, 26) */
+.message-meta { display: inline-flex; align-items: center; gap: 4px; }
+.message-tick { display: inline-flex; color: rgb(255 255 255 / .75); }
+.message-tick .icon { width: 14px; height: 14px; }
 .thread-empty { margin: auto 0; padding: 24px; text-align: center; font-size: 14px; color: var(--text-secondary); }
 .older-messages { align-self: center; display: inline-flex; min-height: 36px; align-items: center; font-size: 13px; }
 .composer { position: sticky; bottom: 0; display: flex; flex-wrap: wrap; align-items: flex-end; gap: 8px; margin: 0 -16px; padding: 8px 16px calc(12px + env(safe-area-inset-bottom)); background: var(--bg-canvas); }

@@ -13,7 +13,7 @@
     {% include 'messaging/_conversations.html' with active_pk=person.pk %}
   </div>
 
-  <div class="thread-pane" id="message-thread" data-updates="{% url 'message_updates' person.pk %}" data-read="{% url 'message_read' person.pk %}" data-cursor="{{ cursor }}" data-history="{{ history|yesno:'true,false' }}">
+  <div class="thread-pane" id="message-thread" data-updates="{% url 'message_updates' person.pk %}" data-read="{% url 'message_read' person.pk %}" data-cursor="{{ cursor }}" data-history="{{ history|yesno:'true,false' }}" data-icons="{{ icons }}">
     <header class="thread-nav">
       <a class="icon-button thread-back" href="{% url 'messages' %}" aria-label="Сообщения"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>
       <span class="avatar small-avatar" aria-hidden="true">{{ person.last_name|first }}{{ person.first_name|first }}</span>
@@ -23,7 +23,7 @@
       {% if has_older %}<a class="older-messages" href="?before={{ older_cursor }}">Более ранние сообщения ↑</a>{% endif %}
       {% if history %}<a class="older-messages" href="{% url 'message_thread' person.pk %}">К последним сообщениям ↓</a>{% endif %}
       <div class="message-stream" id="message-stream" role="log" aria-label="Переписка" aria-live="polite">
-        {% for item in items %}{% ifchanged item.created_at.date %}<div class="message-day"><span>{{ item.created_at|chat_day }}</span></div>{% endifchanged %}<article class="message-bubble {% if item.sender_id == user.pk %}own-message{% else %}incoming-message{% endif %}" data-message-id="{{ item.pk }}"><p>{{ item.text }}</p><time datetime="{{ item.created_at|date:'c' }}">{{ item.created_at|time:'H:i' }}</time></article>
+        {% for item in items %}{% ifchanged item.created_at.date %}<div class="message-day"><span>{{ item.created_at|chat_day }}</span></div>{% endifchanged %}<article class="message-bubble {% if item.sender_id == user.pk %}own-message{% else %}incoming-message{% endif %}" data-message-id="{{ item.pk }}"><p>{{ item.text }}</p><span class="message-meta"><time datetime="{{ item.created_at|date:'c' }}">{{ item.created_at|time:'H:i' }}</time>{% if item.sender_id == user.pk %}<span class="message-tick{% if item.read_at %} is-read{% endif %}" title="{% if item.read_at %}Прочитано {{ item.read_at|date:'j E, H:i' }}{% else %}Отправлено{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#{% if item.read_at %}check-double{% else %}check{% endif %}"/></svg><span class="visually-hidden">{% if item.read_at %}Прочитано{% else %}Отправлено{% endif %}</span></span>{% endif %}</span></article>
         {% empty %}<p class="thread-empty" id="empty-thread">Начните переписку — сообщение увидит только {{ person.first_name|default:person.username }}.</p>{% endfor %}
       </div>
       <p class="help" id="chat-status" role="status"></p>

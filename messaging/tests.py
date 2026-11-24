@@ -108,3 +108,23 @@ class MessagingTests(TestCase):
         self.assertNotContains(response, '@alice')
         event = Event.objects.create(title='Встреча', date=date(2026, 11, 12), start_time='10:00', end_time='11:00', people_count=3, author=self.alice, responsible=self.bob)
         self.assertContains(self.client.get(reverse('event_detail', args=[event.pk])), reverse('message_thread', args=[self.bob.pk]))
+
+    def test_sender_sees_sent_and_read_ticks(self):
+        from messaging.models import Message
+        first = Message.objects.create(sender=self.alice, recipient=self.bob, text='Привет')
+        second = Message.objects.create(sender=self.alice, recipient=self.bob, text='Ты тут?')
+        self.client.force_login(self.alice)
+        page = self.client.get(reverse('message_thread', args=[self.bob.pk]))
+        self.assertContains(page, '#check"/>', count=2)
+        self.assertEqual(self.client.get(reverse('message_updates', args=[self.bob.pk]), {'after': second.pk}).json()['read_through'], 0)
+        self.client.force_login(self.bob)
+        self.client.post(reverse('message_read', args=[self.alice.pk]), {'through': first.pk})
+        self.client.force_login(self.alice)
+        data = self.client.get(reverse('message_updates', args=[self.bob.pk]), {'after': 0}).json()
+        self.assertEqual(data['read_through'], first.pk)
+        self.assertEqual([m['read'] for m in data['messages']], [True, False])
+        page = self.client.get(reverse('message_thread', args=[self.bob.pk]))
+        self.assertContains(page, '#check-double"/>', count=1)
+        self.assertContains(page, '#check"/>', count=1)
+        self.client.force_login(self.bob)  # у получателя галочек нет
+        self.assertNotContains(self.client.get(reverse('message_thread', args=[self.alice.pk])), 'message-tick')
