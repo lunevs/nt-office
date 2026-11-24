@@ -47,7 +47,7 @@
     {% for person in all_users %}
     <article class="user-row{% if not person.is_active %} is-blocked{% endif %}">
       <span class="avatar small-avatar" aria-hidden="true">{{ person.last_name|first }}{{ person.first_name|first }}</span>
-      <span class="user-text"><b>{{ person.last_name }} {{ person.first_name }}</b><small>@{{ person.username }}{% if not person.is_active %} · <span class="is-danger">Заблокирован</span>{% elif not person.is_verified %} · не подтверждён{% endif %}</small></span>
+      <span class="user-text"><b>{{ person.last_name }} {{ person.first_name }}</b><small>@{{ person.username }}{% if not person.is_active %} · <span class="is-danger">Заблокирован</span>{% elif person.is_superuser %} · администратор{% elif not person.is_verified %} · не подтверждён{% endif %}</small></span>
       {% if person.pk == user.pk %}
         <span class="user-me">Это вы</span>
       {% elif not person.is_active %}
@@ -55,6 +55,7 @@
       {% else %}
         <span class="user-actions">
           {% if not person.is_verified %}<form method="post" action="{% url 'user_access' person.pk 'verify' %}">{% csrf_token %}<button class="icon-button is-muted" type="submit" aria-label="Подтвердить аккаунт: {{ person.last_name }} {{ person.first_name }}" title="Подтвердить аккаунт"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg></button></form>{% endif %}
+          {% if person.is_verified %}<a class="icon-button {% if person.is_superuser %}is-accent{% else %}is-muted{% endif %}" href="{% url 'user_role' person.pk %}" data-sheet aria-label="{% if person.is_superuser %}Снять права администратора{% else %}Сделать администратором{% endif %}: {{ person.last_name }} {{ person.first_name }}" title="{% if person.is_superuser %}Администратор — снять права{% else %}Сделать администратором{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#shield"/></svg></a>{% endif %}
           <a class="icon-button is-muted" href="{% url 'reset_password' person.pk %}" data-sheet aria-label="Сбросить пароль: {{ person.last_name }} {{ person.first_name }}" title="Сбросить пароль"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#key"/></svg></a>
           {% if not person.is_superuser %}<form method="post" action="{% url 'user_access' person.pk 'block' %}">{% csrf_token %}<button class="icon-button is-muted" type="submit" aria-label="Заблокировать: {{ person.last_name }} {{ person.first_name }}" title="Заблокировать"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg></button></form>{% endif %}
         </span>

@@ -30,6 +30,7 @@ urlpatterns = [
     path("management/", views.users, name="users"),
     path("management/<int:pk>/access/<str:action>/", views.user_access, name="user_access"),
     path("management/<int:pk>/reset-password/", views.reset_password, name="reset_password"),
+    path("management/<int:pk>/role/", views.user_role, name="user_role"),
     path("verification/request/", tg.request_verification, name="request_verification"),
     path("tg/", tg.entry, name="telegram_entry"),
     path("telegram/auth/", tg.webapp_auth, name="telegram_auth"),

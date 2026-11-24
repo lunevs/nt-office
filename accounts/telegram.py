@@ -178,3 +178,16 @@ def notify_key_sent(event, person, admins):
         return
     contacts = "; ".join(f"{_name(admin)}" + (f" (@{admin.telegram_username})" if admin.telegram_username else "") for admin in admins) or "администратор офиса"
     send(person.telegram_id, "Запрос на ключ отправлен", f"{_event_line(event)}\nАдминистраторы напишут вам в «Сообщения», как и когда получить ключ. Контакты: {contacts}.", [_button("Открыть сообщения", "/messages/")])
+
+
+def notify_role(user):
+    """Назначили администратором или сняли права."""
+    if not (user.telegram_id and user.is_active):
+        return
+    if user.is_superuser:
+        body = "Теперь вам доступно «Управление»: подтверждение аккаунтов, ключи, пользователи и любые встречи."
+        if user.must_change_password:
+            body += " При следующем входе задайте новый пароль — не короче 10 символов."
+        send(user.telegram_id, "Вы администратор", body, [_button("Открыть управление", "/management/")])
+    else:
+        send(user.telegram_id, "Права администратора сняты", "Вы остаётесь участником и можете бронировать без ограничений.", [_button("Открыть календарь", "/")])

@@ -1244,6 +1244,7 @@ fieldset.panel > .field-error { margin-top: 12px; }
 .profile-page, .management-page, .password-page { display: flex; flex-direction: column; gap: 12px; }
 .profile-page .page-header { margin-bottom: 4px; }
 .icon-button.is-muted { background: var(--bg-muted); box-shadow: none; }
+.icon-button.is-accent { background: var(--accent); color: var(--text-on-accent); box-shadow: none; }
 .page-back { align-self: flex-start; margin-bottom: 8px; }
 .section-title { margin: 16px 0 0; font-size: 18px; line-height: 24px; letter-spacing: -.3px; }
 .section-row { display: flex; align-items: baseline; justify-content: space-between; margin-top: 16px; }

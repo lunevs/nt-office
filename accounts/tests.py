@@ -320,3 +320,59 @@ class MockupFlowTests(TestCase):
         self.member.refresh_from_db()
         self.assertFalse(self.member.must_change_password)
         self.assertTrue(self.member.check_password(NEW))
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class AdministratorRoleTests(TestCase):
+    """Назначение и снятие прав администратора (макеты 38, 38б)."""
+
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', password='Admin-Long-Phrase!2026', first_name='Иван')
+        self.member = User.objects.create_user('member', password=PASSWORD, first_name='Ольга', last_name='Смирнова', verified=True)
+        self.newbie = User.objects.create_user('newbie', password=PASSWORD, first_name='Пётр')
+        self.client.force_login(self.admin)
+
+    def test_management_shows_shield_and_admin_label(self):
+        page = self.client.get(reverse('users'))
+        self.assertContains(page, reverse('user_role', args=[self.member.pk]))
+        self.assertNotContains(page, reverse('user_role', args=[self.newbie.pk]))  # сначала подтвердить
+        self.assertNotContains(page, reverse('user_role', args=[self.admin.pk]))  # себе нельзя
+
+    @patch('accounts.telegram.notify_role')
+    def test_make_and_remove_administrator(self, notify):
+        sheet = self.client.get(reverse('user_role', args=[self.member.pk]))
+        self.assertContains(sheet, 'Сделать администратором?')
+        self.assertContains(sheet, 'не короче 10 символов')
+        self.assertRedirects(self.client.post(reverse('user_role', args=[self.member.pk])), reverse('users'))
+        self.member.refresh_from_db()
+        self.assertTrue(self.member.is_administrator)
+        self.assertTrue(self.member.must_change_password)  # пароль администратора — от 10 символов
+        notify.assert_called_once()
+        self.assertContains(self.client.get(reverse('users')), '@member · администратор')
+        self.assertContains(self.client.get(reverse('user_role', args=[self.member.pk])), 'Снять права администратора?')
+        self.client.post(reverse('user_role', args=[self.member.pk]))
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.is_superuser)
+        self.assertTrue(self.member.is_verified)
+
+    @patch('accounts.telegram.notify_role')
+    def test_telegram_only_admin_keeps_signing_in_without_password_change(self, notify):
+        self.member.set_unusable_password()
+        self.member.save()
+        self.assertNotContains(self.client.get(reverse('user_role', args=[self.member.pk])), 'не короче 10 символов')
+        self.client.post(reverse('user_role', args=[self.member.pk]))
+        self.member.refresh_from_db()
+        self.assertEqual((self.member.is_superuser, self.member.must_change_password), (True, False))
+
+    def test_guards(self):
+        self.client.post(reverse('user_role', args=[self.newbie.pk]))
+        self.newbie.refresh_from_db()
+        self.assertFalse(self.newbie.is_superuser)
+        self.assertEqual(self.client.post(reverse('user_role', args=[self.admin.pk])).status_code, 403)
+        self.member.is_active = False
+        self.member.save()
+        self.assertEqual(self.client.post(reverse('user_role', args=[self.member.pk])).status_code, 403)
+        self.client.force_login(self.newbie)
+        self.assertEqual(self.client.post(reverse('user_role', args=[self.admin.pk])).status_code, 403)
+        self.admin.refresh_from_db()
+        self.assertTrue(self.admin.is_superuser)

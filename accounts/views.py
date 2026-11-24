@@ -164,6 +164,48 @@ def user_access(request, pk, action):
     return redirect("users")
 
 @administrator_required
+@require_http_methods(["GET", "POST"])
+def user_role(request, pk):
+    """Назначить администратором или снять права (макеты 38 и 38б)."""
+    from django import forms as django_forms
+    person = get_object_or_404(User, pk=pk)
+    if person.pk == request.user.pk or not person.is_active:
+        return HttpResponseForbidden("Права этого пользователя здесь не меняются.")
+    name = f"{person.last_name} {person.first_name}".strip() or person.username
+    making = not person.is_superuser
+    if making and not person.is_verified:
+        messages.error(request, f"Сначала подтвердите аккаунт: {name}.")
+        return redirect("users")
+    if request.method == "POST":
+        with transaction.atomic():
+            person = User.objects.select_for_update().get(pk=person.pk)
+            if making:
+                person.is_superuser = person.is_staff = True
+                person.verified = True
+                person.verification_requested_at = None
+                # У администратора пароль не короче 10 символов — прежний мог быть короче.
+                person.must_change_password = person.has_usable_password()
+                messages.success(request, f"{name} теперь администратор.")
+            elif User.objects.filter(is_superuser=True, is_active=True).exclude(pk=person.pk).exists():
+                person.is_superuser = person.is_staff = False
+                messages.success(request, f"Права администратора сняты: {name}.")
+            else:
+                messages.error(request, "Нельзя снять права у последнего администратора.")
+                return redirect("users")
+            person.save(update_fields=["is_superuser", "is_staff", "verified", "verification_requested_at", "must_change_password"])
+        telegram.notify_role(person)
+        return redirect("users")
+    first = person.first_name or person.username
+    if making:
+        context = {"title": "Сделать администратором?", "submit": "Сделать администратором", "submit_style": "primary",
+                   "subtitle": f"{name} · @{person.username}. Сможет подтверждать аккаунты, блокировать пользователей, сбрасывать пароли, отмечать выдачу ключей и менять любые встречи."
+                               + (f" Свой пароль {first} сразу сменит на новый — не короче 10 символов." if person.has_usable_password() else "")}
+    else:
+        context = {"title": "Снять права администратора?", "submit": "Снять права", "submit_style": "danger",
+                   "subtitle": f"{name} · @{person.username}. Останется подтверждённым участником и сможет бронировать без ограничений, но «Управление» станет недоступно."}
+    return render(request, "accounts/sheet_form.html", {**context, "form": django_forms.Form(), "cancel_url": reverse("users")})
+
+@administrator_required
 @sensitive_post_parameters()
 def reset_password(request, pk):
     user = get_object_or_404(User, pk=pk)
@@ -183,7 +225,7 @@ def reset_password(request, pk):
         suggestion = generate_temporary_password()
         form = TemporaryPasswordForm(user, initial={"new_password1": suggestion, "new_password2": suggestion})
     name = user.first_name or user.username
-    return render(request, "accounts/sheet_form.html", {"form": form, "title": "Сбросить пароль?", "subtitle": f"{user.get_full_name() or user.username} · @{user.username}. Старый пароль перестанет работать, а при следующем входе {name} задаст свой.", "submit": "Сбросить пароль", "submit_style": "danger", "cancel_url": reverse("users"), "temporary_password": True, "minimum": 10 if user.is_superuser else 5})
+    return render(request, "accounts/sheet_form.html", {"form": form, "title": "Сбросить пароль?", "subtitle": f"{(user.last_name + ' ' + user.first_name).strip() or user.username} · @{user.username}. Старый пароль перестанет работать, а при следующем входе {name} задаст свой.", "submit": "Сбросить пароль", "submit_style": "danger", "cancel_url": reverse("users"), "temporary_password": True, "minimum": 10 if user.is_superuser else 5})
 
 @login_required
 @require_http_methods(["GET", "POST"])
