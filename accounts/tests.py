@@ -18,17 +18,34 @@ class AccessTests(TestCase):
         self.admin = User.objects.create_superuser('admin', password=PASSWORD, first_name='Иван')
         self.member = User.objects.create_user('member', password=PASSWORD, first_name='Анна', last_name='Иванова')
 
-    def test_registration_immediately_active_and_logged_in(self):
-        response = self.client.post(reverse('register'), {'username': 'NewMember', 'first_name': 'Пётр', 'last_name': 'Петров', 'password1': PASSWORD, 'password2': PASSWORD, 'is_superuser': 'on', 'is_active': ''})
+    def test_registration_gives_immediate_unverified_access(self):
+        response = self.client.post(reverse('register'), {'username': 'NewMember', 'first_name': 'Пётр', 'last_name': 'Петров', 'password1': PASSWORD, 'password2': PASSWORD, 'is_superuser': 'on', 'verified': 'on'})
         self.assertRedirects(response, reverse('home'))
         person = User.objects.get(username='newmember')
         self.assertTrue(person.is_active)
+        self.assertFalse(person.verified)
         self.assertFalse(person.is_superuser)
         self.assertTrue(person.check_password(PASSWORD))
         self.assertNotEqual(person.password, PASSWORD)
         self.assertEqual(self.client.session['_auth_user_id'], str(person.pk))
+        self.assertContains(self.client.get(reverse('profile')), 'Аккаунт не подтверждён')
         self.client.logout()
-        self.assertRedirects(self.client.post(reverse('login'), {'username':'NewMember','password':PASSWORD}), reverse('home'))
+        self.assertRedirects(self.client.post(reverse('login'), {'username': 'NewMember', 'password': PASSWORD}), reverse('home'))
+
+    def test_verification_reject_and_only_admin_can_decide(self):
+        from django.utils import timezone
+        person = User.objects.create_user('waiting', password=PASSWORD, verification_requested_at=timezone.now())
+        self.client.force_login(self.member)
+        self.assertEqual(self.client.post(reverse('user_access', args=[person.pk, 'verify'])).status_code, 403)
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(reverse('users')), '@waiting')
+        self.client.post(reverse('user_access', args=[person.pk, 'reject']))
+        person.refresh_from_db()
+        self.assertIsNone(person.verification_requested_at)
+        self.assertFalse(person.verified)
+        self.client.post(reverse('user_access', args=[person.pk, 'verify']))
+        person.refresh_from_db()
+        self.assertTrue(person.verified)
 
     def test_permissions_and_post_only_logout(self):
         self.client.force_login(self.member)
@@ -58,7 +75,7 @@ class AccessTests(TestCase):
 
     def test_case_insensitive_unique_login(self):
         response = self.client.post(reverse('register'), {'username': 'MEMBER', 'first_name': 'Другой', 'last_name': 'Человек', 'password1': PASSWORD, 'password2': PASSWORD})
-        self.assertContains(response, 'Этот логин уже занят.')
+        self.assertContains(response, 'Этот логин уже занят')
         with self.assertRaises(IntegrityError), transaction.atomic():
             User.objects.create_user('MEMBER', password=PASSWORD)
 
@@ -162,7 +179,7 @@ class AccessTests(TestCase):
         self.member.save()
         self.client.force_login(self.admin)
         response=self.client.get(reverse('users'))
-        self.assertContains(response,'Все пользователи')
+        self.assertContains(response,'Пользователи')
         self.assertContains(response,'@member')
         self.assertContains(response,'@admin')
         self.assertContains(response,'Заблокирован')
@@ -184,3 +201,122 @@ class AccessTests(TestCase):
         self.assertFalse(self.member.is_active)
         self.assertEqual(self.member.session_version,1)
         self.assertEqual(self.client.get(reverse('home')).status_code,302)
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class AppShellTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', password=PASSWORD, first_name='Иван')
+        self.member = User.objects.create_user('member', password=PASSWORD, first_name='Анна', last_name='Иванова')
+
+    def test_service_worker_is_served_from_root_without_login(self):
+        response = self.client.get(reverse('service_worker'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response['Content-Type'].startswith('text/javascript'))
+        self.assertEqual(response['Cache-Control'], 'no-cache')
+        body = response.content.decode()
+        self.assertIn('"precache": ["/static/app.css"', body)
+        self.assertIn('"^/events/\\\\d+/$"', body)
+        self.assertNotIn('management', body)  # управление с временными паролями не сохраняется
+        self.assertNotIn('{%', body)
+
+    def test_service_worker_skips_forced_password_change(self):
+        self.member.must_change_password = True
+        self.member.save()
+        self.client.force_login(self.member)
+        self.assertEqual(self.client.get(reverse('service_worker')).status_code, 200)
+        page = self.client.get(reverse('password_change'))
+        self.assertNotContains(page, 'data-auth="in"')
+        self.assertNotContains(page, 'data-toast="offline"')
+
+    def test_offline_and_update_toasts_follow_mockups(self):
+        self.client.force_login(self.member)
+        page = self.client.get(reverse('home'))
+        self.assertContains(page, 'data-auth="in"')
+        self.assertContains(page, 'Нет сети · показываем сохранённое расписание')
+        self.assertContains(page, 'Доступна новая версия')
+        self.assertContains(page, 'data-update-now>Обновить</button>')
+        self.assertContains(page, 'pwa.js')
+        self.client.logout()
+        login = self.client.get(reverse('login'))
+        self.assertContains(login, 'pwa.js')
+        self.assertContains(login, 'data-sw="/sw.js"')
+        self.assertNotContains(login, 'data-toast="offline"')
+
+    def test_manifest_is_public_and_installable(self):
+        response = self.client.get(reverse('manifest'))
+        self.assertEqual(response.status_code, 200)
+        self.assertTrue(response['Content-Type'].startswith('application/manifest+json'))
+        data = response.json()
+        self.assertEqual(data['name'], 'Наш офис')
+        self.assertEqual(data['display'], 'standalone')
+        self.assertEqual(data['start_url'], '/')
+        self.assertEqual({icon['sizes'] for icon in data['icons']}, {'192x192', '512x512'})
+        self.assertIn('maskable', [icon.get('purpose') for icon in data['icons']])
+
+    def test_manifest_not_redirected_during_forced_password_change(self):
+        self.member.must_change_password = True
+        self.member.save()
+        self.client.force_login(self.member)
+        self.assertEqual(self.client.get(reverse('manifest')).status_code, 200)
+        response = self.client.get(reverse('password_change'))
+        self.assertNotContains(response, 'class="tabbar"')
+        self.assertNotContains(response, 'class="sidebar"')
+
+    def test_pages_link_manifest_and_home_screen_icon(self):
+        response = self.client.get(reverse('login'))
+        self.assertContains(response, 'rel="manifest" href="/manifest.webmanifest"')
+        self.assertContains(response, 'rel="apple-touch-icon"')
+        self.assertNotContains(response, 'class="tabbar"')
+
+    def test_management_gear_only_for_administrator(self):
+        self.client.force_login(self.member)
+        response = self.client.get(reverse('home'))
+        self.assertContains(response, 'class="tabbar"')
+        self.assertNotContains(response, 'aria-label="Управление"')
+        self.client.force_login(self.admin)
+        self.assertContains(self.client.get(reverse('home')), 'aria-label="Управление"')
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class MockupFlowTests(TestCase):
+    def setUp(self):
+        self.admin = User.objects.create_superuser('admin', password=PASSWORD, first_name='Иван')
+        self.member = User.objects.create_user('member', password=PASSWORD, first_name='Анна', last_name='Иванова')
+
+    def test_blocked_message_only_with_correct_password(self):
+        self.member.is_active = False
+        self.member.save()
+        wrong = self.client.post(reverse('login'), {'username': 'member', 'password': 'Wrong-Safe-Phrase!111'})
+        self.assertContains(wrong, 'Неверный логин или пароль')
+        self.assertNotContains(wrong, 'Аккаунт заблокирован')
+        right = self.client.post(reverse('login'), {'username': 'member', 'password': PASSWORD})
+        self.assertContains(right, 'Аккаунт заблокирован')
+        self.assertNotIn('_auth_user_id', self.client.session)
+
+    def test_registration_with_single_password_field_still_validates(self):
+        response = self.client.post(reverse('register'), {'username': 'solo', 'first_name': 'Пётр', 'last_name': 'Петров', 'password1': PASSWORD})
+        self.assertRedirects(response, reverse('home'))
+        self.client.logout()
+        self.assertTrue(User.objects.get(username='solo').check_password(PASSWORD))
+        weak = self.client.post(reverse('register'), {'username': 'weak', 'first_name': 'Ян', 'last_name': 'Ли', 'password1': '12345678'})
+        self.assertEqual(weak.status_code, 200)
+        self.assertFalse(User.objects.filter(username='weak').exists())
+
+    def test_reset_password_shows_temporary_password_once(self):
+        self.client.force_login(self.admin)
+        self.assertRedirects(self.client.post(reverse('reset_password', args=[self.member.pk]), {'new_password1': TEMP, 'new_password2': TEMP}), reverse('users'), fetch_redirect_response=False)
+        first = self.client.get(reverse('users'))
+        self.assertContains(first, 'Пароль сброшен')
+        self.assertContains(first, TEMP)
+        self.assertNotContains(self.client.get(reverse('users')), TEMP)
+
+    def test_forced_password_change_does_not_ask_temporary_again(self):
+        self.member.must_change_password = True
+        self.member.save()
+        self.client.force_login(self.member)
+        self.assertNotContains(self.client.get(reverse('password_change')), 'name="old_password"')
+        self.assertRedirects(self.client.post(reverse('password_change'), {'new_password1': NEW, 'new_password2': NEW}), reverse('profile'))
+        self.member.refresh_from_db()
+        self.assertFalse(self.member.must_change_password)
+        self.assertTrue(self.member.check_password(NEW))

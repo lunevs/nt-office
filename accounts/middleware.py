@@ -7,7 +7,7 @@ class PasswordChangeRequiredMiddleware:
 
     def __call__(self, request):
         if request.user.is_authenticated and request.user.must_change_password:
-            allowed = {reverse("password_change"), reverse("logout"), reverse("health")}
+            allowed = {reverse("password_change"), reverse("logout"), reverse("health"), reverse("manifest"), reverse("service_worker"), reverse("telegram_webhook")}
             if request.path not in allowed and not request.path.startswith("/static/"):
                 return redirect("password_change")
         return self.get_response(request)

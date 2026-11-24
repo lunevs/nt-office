@@ -1,0 +1,21 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Наш офис{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="welcome-page">
+  <div class="welcome-brand"><img src="{% static 'favicon.svg' %}" alt="" width="36" height="36"><b>Наш офис</b></div>
+  <div class="welcome-art" aria-hidden="true">
+    <span class="event-card room-hall welcome-card is-1"><span class="event-time">08:00–09:00</span><span class="event-title"><span>Утренняя молитва</span></span><span class="event-rooms">Основной зал</span></span>
+    <span class="event-card room-banksy welcome-card is-2"><span class="event-time">11:00–12:30</span><span class="event-title"><span>Детская школа</span></span><span class="event-rooms">Бэнкси</span></span>
+    <span class="event-card room-kitchen welcome-card is-3"><span class="event-time">14:00–15:00</span><span class="event-title"><span>Обед волонтёров</span></span><span class="event-rooms">Кухня</span></span>
+    <span class="welcome-now">10:40</span>
+    <span class="welcome-plus"><svg class="icon"><use href="{{ icons }}#plus"/></svg></span>
+  </div>
+  <h1 class="welcome-title">Расписание офиса<br><span>всегда под рукой</span></h1>
+  <p class="welcome-text">Смотрите, что сегодня происходит в помещениях, и бронируйте время в пару касаний</p>
+  <div class="welcome-actions">
+    {% if telegram_oauth_url %}<a class="button telegram-button" href="{{ telegram_oauth_url }}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg>Войти через Telegram</a>{% endif %}
+    <a class="button secondary" href="{% url 'login' %}?method=password{% if request.GET.next %}&amp;next={{ request.GET.next|urlencode }}{% endif %}">Войти по логину</a>
+    <p class="welcome-register">Нет аккаунта? <a href="{% url 'register' %}">Зарегистрироваться</a></p>
+  </div>
+</section>
+{% endblock %}

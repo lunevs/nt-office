@@ -1,0 +1,5 @@
+{% load static %}<a class="event-card room-{{ event.color }}{% if not event.details_visible %} is-private{% endif %}" href="{% url 'event_detail' event.pk %}"{% if positioned %} style="--top:{{ card.top|stringformat:'.2f' }};--h:{{ card.height|stringformat:'.2f' }};--left:{{ card.left|stringformat:'.4f' }};--w:{{ card.width|stringformat:'.4f' }}"{% endif %}>
+  <span class="event-time">{{ event.start_time|time:'H:i' }}–{{ event.end_time|time:'H:i' }}</span>
+  <span class="event-title"><span>{{ event.title }}</span>{% if not event.details_visible %}<svg class="icon" aria-hidden="true"><use href="{% static 'icons.svg' %}#lock"/></svg>{% endif %}</span>
+  <span class="event-rooms">{% for room in event.rooms %}{{ room.name }}{% if not forloop.last %} · {% endif %}{% endfor %}{% if not event.details_visible %} · {{ event.responsible.short_name }}{% endif %}</span>
+</a>

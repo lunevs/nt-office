@@ -1,1 +1,27 @@
-{% extends 'base.html' %}{% block title %}Написать сообщение · Наш офис{% endblock %}{% block content %}<section><a class="back-link" href="{% url 'messages' %}">← Сообщения</a><h1>Кому написать?</h1><form class="people-search" method="get"><label for="people-search" class="visually-hidden">Имя или логин</label><input id="people-search" name="q" value="{{ query }}" placeholder="Имя или логин" maxlength="150"><button class="button secondary" type="submit">Найти</button></form><div class="conversation-list">{% for person in people %}<a class="card conversation person-choice" href="{% url 'message_thread' person.pk %}"><div><strong>{{ person.last_name }} {{ person.first_name }}</strong><p class="muted">@{{ person.username }}</p></div><span aria-hidden="true">↗</span></a>{% empty %}<p class="muted">Участники не найдены.</p>{% endfor %}</div><div class="pagination">{% if people.has_previous %}<a href="?q={{ query|urlencode }}&amp;page={{ people.previous_page_number }}">← Назад</a>{% endif %}{% if people.has_next %}<a href="?q={{ query|urlencode }}&amp;page={{ people.next_page_number }}">Далее →</a>{% endif %}</div></section>{% endblock %}
+{% extends 'base.html' %}{% load static %}
+{% block title %}Новое сообщение · Наш офис{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="sheet-page people-page">
+  <span class="sheet-grabber" aria-hidden="true"></span>
+  <header class="sheet-nav">
+    <a class="icon-button sheet-close" href="{% url 'messages' %}" aria-label="Закрыть"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#x"/></svg></a>
+    <h1>Новое сообщение</h1>
+    <span class="sheet-nav-spacer" aria-hidden="true"></span>
+  </header>
+  <form class="people-search" method="get" role="search">
+    <label class="field-input"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#search"/></svg><span class="visually-hidden">Имя или логин</span><input id="people-search" name="q" value="{{ query }}" placeholder="Имя или логин" maxlength="150" autocomplete="off" enterkeyhint="search"></label>
+  </form>
+  {% if recent %}
+  <div class="people-section"><h2>Недавние</h2></div>
+  <div class="people-list">{% for person in recent %}{% include 'messaging/_person_row.html' %}{% endfor %}</div>
+  {% endif %}
+  <div class="people-section"><h2>{% if query %}Найдено{% else %}Все участники{% endif %}</h2><span>{{ people.paginator.count }}</span></div>
+  {% if people %}
+  <div class="people-list">{% for person in people %}{% include 'messaging/_person_row.html' %}{% endfor %}</div>
+  {% else %}
+  <p class="people-empty">Никого не нашли. Проверьте имя или логин.</p>
+  {% endif %}
+  {% if people.has_previous or people.has_next %}<div class="pagination">{% if people.has_previous %}<a href="?q={{ query|urlencode }}&amp;page={{ people.previous_page_number }}">← Назад</a>{% else %}<span></span>{% endif %}{% if people.has_next %}<a href="?q={{ query|urlencode }}&amp;page={{ people.next_page_number }}">Далее →</a>{% endif %}</div>{% endif %}
+</section>
+{% endblock %}

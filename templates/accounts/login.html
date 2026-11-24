@@ -1,0 +1,36 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Вход · Наш офис{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="password-page auth-page">
+  {% if telegram_oauth_url %}<a class="icon-button page-back" href="{% url 'login' %}" aria-label="Назад"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>{% endif %}
+  <div class="auth-head">
+    <h1>Вход</h1>
+    <p>По логину и паролю, которые вы задали при регистрации</p>
+  </div>
+  <form method="post" class="auth-form" novalidate>
+    {% csrf_token %}
+    {% if login_error == 'inactive' %}
+      <div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg><div><b>Аккаунт заблокирован</b><p>Доступ закрыт администратором. Ваши встречи и переписка сохранены — обратитесь к администратору офиса.</p></div></div>
+    {% elif login_error == 'throttled' %}
+      <div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg><div><b>Слишком много попыток</b><p>Попробуйте снова через 15 минут.</p></div></div>
+    {% elif login_error %}
+      <div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg><div><b>Неверный логин или пароль</b><p>Проверьте раскладку и регистр букв. Забыли пароль — обратитесь к администратору.</p></div></div>
+    {% endif %}
+    <div class="sheet-field">
+      <label class="visually-hidden" for="{{ form.username.id_for_label }}">Логин</label>
+      <div class="field-input{% if form.username.errors %} is-error{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>{{ form.username }}</div>
+      {% if form.username.errors %}<div class="field-error">{{ form.username.errors|join:' ' }}</div>{% endif %}
+    </div>
+    <div class="sheet-field">
+      <label class="visually-hidden" for="{{ form.password.id_for_label }}">Пароль</label>
+      <div class="field-input{% if login_error == 'invalid_login' or form.password.errors %} is-error{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg>{{ form.password }}</div>
+      {% if login_error == 'invalid_login' %}<div class="field-error">Пароль не подошёл</div>{% endif %}
+    </div>
+    <p class="panel-hint">Забыли пароль? Обратитесь к администратору — он задаст временный.</p>
+    <div class="auth-actions">
+      <button class="button primary" type="submit">Войти</button>
+      <a class="button ghost button-m" href="{% url 'register' %}">Создать аккаунт</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

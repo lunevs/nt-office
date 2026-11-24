@@ -1,3 +1,4 @@
+from unittest.mock import patch
 from datetime import date, time
 from django.contrib.auth import get_user_model
 from django.test import TestCase, Client, override_settings
@@ -10,8 +11,9 @@ User = get_user_model()
 @override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
 class BookingTests(TestCase):
     def setUp(self):
-        self.author = User.objects.create_user('author', first_name='Анна', last_name='Иванова')
-        self.other = User.objects.create_user('other', first_name='Пётр')
+        # Подтверждённые аккаунты: ограничения неподтверждённых проверяются отдельно (VerificationLimitTests).
+        self.author = User.objects.create_user('author', first_name='Анна', last_name='Иванова', verified=True)
+        self.other = User.objects.create_user('other', first_name='Пётр', verified=True)
         self.admin = User.objects.create_superuser('admin')
         self.pending = User.objects.create_user('pending', is_active=False)
         self.rooms = list(Room.objects.all())
@@ -133,7 +135,7 @@ class BookingTests(TestCase):
         self.assertEqual(self.author.first_name, 'Новое')
         self.assertFalse(self.author.is_superuser)
         response = self.client.post(reverse('profile_edit', args=['login']), {'username': 'OTHER'})
-        self.assertContains(response, 'Этот логин уже занят.')
+        self.assertContains(response, 'Этот логин уже занят')
         self.assertRedirects(self.client.post(reverse('profile_edit', args=['login']), {'username': 'NewLogin'}), reverse('profile'))
         self.author.refresh_from_db()
         self.assertEqual(self.author.username, 'newlogin')
@@ -197,8 +199,10 @@ class BookingTests(TestCase):
         extra('18:00', '19:00', self.rooms[2])
         extra('18:00', '19:00', self.rooms[0], Event.Status.CANCELLED)
         self.assertEqual(list(event.conflicts()), [overlap])
+        # По макету в календаре пересечения не подписываются; предупреждение — на странице встречи.
         response = self.client.get(reverse('home'), {'date': self.data['date']})
-        self.assertContains(response, '⚠ Пересечение')
+        self.assertNotContains(response, '⚠ Пересечение')
+        self.assertContains(self.client.get(reverse('event_detail', args=[event.pk])), '⚠ Пересечение')
         self.client.force_login(self.admin)
         event.refresh_from_db()
         self.assertEqual(event.status, Event.Status.ACTIVE)
@@ -240,7 +244,7 @@ class BookingTests(TestCase):
         self.assertNotContains(response, 'На подтверждении')
         self.assertNotContains(response, 'Все события проверены')
         self.assertNotContains(response, 'Ждут активации')
-        self.assertContains(response, 'Все пользователи')
+        self.assertContains(response, 'Пользователи')
         self.client.post(reverse('event_status', args=[event.pk, 'cancel']))
         self.client.force_login(self.other)
         self.assertEqual(list(self.client.get(reverse('profile')).context['upcoming_events']), [])
@@ -286,7 +290,7 @@ class BookingTests(TestCase):
         response = self.client.get(reverse('events_cancelled'))
         self.assertEqual([e['pk'] for e in response.context['events']], [own.pk])
         self.assertNotContains(response, other.title)
-        self.assertContains(self.client.get(reverse('profile')), 'Мои отменённые мероприятия')
+        self.assertContains(self.client.get(reverse('profile')), 'Мои отменённые')
         self.client.force_login(self.admin)
         self.assertEqual(len(self.client.get(reverse('events_cancelled')).context['events']), 2)
         self.assertEqual(self.client.get(reverse('events_cancelled'), {'mine': '1'}).context['events'], [])
@@ -398,8 +402,8 @@ class SeriesTests(TestCase):
 
     def test_series_form_and_detail_render(self):
         events = self.series()
-        self.assertContains(self.client.get(reverse('event_edit', args=[events[0].pk])), 'Эта и все последующие встречи')
-        self.assertContains(self.client.get(reverse('event_detail', args=[events[0].pk])), 'Еженедельная встреча')
+        self.assertContains(self.client.get(reverse('event_edit', args=[events[0].pk])), 'Эта и все следующие')
+        self.assertContains(self.client.get(reverse('event_detail', args=[events[0].pk])), 'Каждую неделю')
 
 
 
@@ -446,7 +450,7 @@ class MonthCalendarTests(TestCase):
         return event
 
     def cells(self, response):
-        return {cell['date']: cell for week in response.context['month_weeks'] for cell in week if cell}
+        return {cell['date']: cell for week in response.context['month_weeks'] for cell in week if cell and not cell['outside']}
 
     def test_month_counts_conflicts_and_cancelled_exclusion(self):
         self.event(date(2026,11,14))
@@ -487,7 +491,9 @@ class MonthCalendarTests(TestCase):
         self.assertEqual(len(self.cells(response)),29)
         self.assertEqual(response.context['previous'],date(2028,1,29))
         self.assertEqual(response.context['next'],date(2028,3,29))
-        self.assertEqual(response.context['month_weeks'][0][0],None)
+        first = response.context['month_weeks'][0][0]
+        self.assertTrue(first['outside'])
+        self.assertEqual(first['date'], date(2028,1,31))
 
     def test_month_selection_add_date_and_empty_day(self):
         response=self.client.get(reverse('home'),{'view':'month','date':'2026-11-14'})
@@ -510,3 +516,78 @@ class MonthCalendarTests(TestCase):
         self.assertEqual(self.client.get(reverse('home')).context['calendar_mode'], 'day')
         self.client.get(reverse('home'), {'view':'invalid'})
         self.assertEqual(self.client.get(reverse('home')).context['calendar_mode'], 'day')
+
+
+
+@override_settings(STORAGES={'default': {'BACKEND': 'django.core.files.storage.FileSystemStorage'}, 'staticfiles': {'BACKEND': 'django.contrib.staticfiles.storage.StaticFilesStorage'}})
+class VerificationLimitTests(TestCase):
+    """Неподтверждённый аккаунт (макет 34): одна своя встреча в день, до 2 часов, без повтора."""
+    def setUp(self):
+        self.user = User.objects.create_user('newbie', first_name='Ян', last_name='Новиков')
+        self.admin = User.objects.create_superuser('admin', first_name='Иван', last_name='Петров')
+        self.room = Room.objects.first()
+        self.client.force_login(self.user)
+        self.data = {'title': 'Встреча', 'date': '2030-01-10', 'start_time': '10:00', 'end_time': '11:30', 'rooms': [self.room.pk], 'people_count': 4, 'responsible': self.user.pk}
+
+    def test_limits_for_unverified_account(self):
+        page = self.client.get(reverse('event_create'))
+        self.assertContains(page, 'Аккаунт ещё не подтверждён')
+        long = self.client.post(reverse('event_create'), {**self.data, 'end_time': '12:30'})
+        self.assertContains(long, 'Дольше 2 часов — после подтверждения аккаунта')
+        series = self.client.post(reverse('event_create'), {**self.data, 'repeat_weekly': 'on', 'repeat_until': '2030-02-10'})
+        self.assertContains(series, 'Повтор каждую неделю — после подтверждения аккаунта')
+        self.assertEqual(Event.objects.count(), 0)
+        self.assertEqual(self.client.post(reverse('event_create'), self.data).status_code, 302)
+        second = self.client.post(reverse('event_create'), {**self.data, 'start_time': '15:00', 'end_time': '16:00'})
+        self.assertContains(second, 'Вторая встреча в этот день — после подтверждения аккаунта')
+        self.assertEqual(Event.objects.count(), 1)
+        # Правка своей встречи на тот же день не считается второй встречей.
+        event = Event.objects.get()
+        self.assertEqual(self.client.post(reverse('event_edit', args=[event.pk]), {**self.data, 'title': 'Новое имя'}).status_code, 302)
+
+    @patch('accounts.telegram.send')
+    def test_verification_request_and_admin_verify_remove_limits(self, send):
+        self.admin.telegram_id = 900
+        self.admin.save()
+        self.client.post(reverse('request_verification'))
+        self.user.refresh_from_db()
+        self.assertIsNotNone(self.user.verification_requested_at)
+        self.assertEqual(send.call_args[0][:2], (900, 'Запрос на подтверждение аккаунта'))
+        admin = Client()
+        admin.force_login(self.admin)
+        self.assertContains(admin.get(reverse('users')), 'Запросы на подтверждение')
+        admin.post(reverse('user_access', args=[self.user.pk, 'verify']))
+        self.user.refresh_from_db()
+        self.assertTrue(self.user.verified)
+        self.assertEqual(self.client.post(reverse('event_create'), {**self.data, 'end_time': '14:00', 'repeat_weekly': 'on', 'repeat_until': '2030-01-24'}).status_code, 302)
+        self.assertEqual(Event.objects.count(), 3)
+
+    @override_settings(SITE_URL='https://office.example')
+    @patch('accounts.telegram.send')
+    def test_key_request_notifies_admins_and_shows_contacts(self, send):
+        self.admin.telegram_id = 900
+        self.admin.telegram_username = 'office_admin'
+        self.admin.save()
+        self.user.telegram_id = 901
+        self.user.save()
+        response = self.client.post(reverse('event_create'), {**self.data, 'key_needed': 'on'})
+        event = Event.objects.get()
+        self.assertRedirects(response, reverse('event_detail', args=[event.pk]))
+        self.assertTrue(event.key_needed)
+        calls = {c.args[0]: c.args for c in send.call_args_list}
+        self.assertEqual(calls[900][1], 'Нужен ключ')
+        self.assertEqual(calls[900][3][0]['text'], 'Открыть чат')
+        self.assertEqual(calls[901][1], 'Запрос на ключ отправлен')
+        page = self.client.get(reverse('event_detail', args=[event.pk]))
+        self.assertContains(page, 'Запрос на ключ отправлен')
+        self.assertContains(page, 'Петров Иван')
+        self.assertContains(page, reverse('message_thread', args=[self.admin.pk]))
+        self.assertContains(page, '@office_admin')
+        admin = Client()
+        admin.force_login(self.admin)
+        self.assertContains(admin.get(reverse('users')), 'Нужен ключ')
+        self.assertEqual(self.client.post(reverse('event_key_handled', args=[event.pk])).status_code, 403)
+        admin.post(reverse('event_key_handled', args=[event.pk]))
+        event.refresh_from_db()
+        self.assertTrue(event.key_handled)
+        self.assertNotContains(admin.get(reverse('users')), 'Кто просит')

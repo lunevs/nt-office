@@ -1,1 +1,29 @@
-{% extends 'base.html' %}{% block title %}Отменённые мероприятия · Наш офис{% endblock %}{% block content %}<section>{% if not mine %}<a class="back-link" href="{% url 'users' %}">← К управлению</a>{% else %}<a class="back-link" href="{% url 'profile' %}">← Мой профиль</a>{% endif %}<h1>{% if mine %}Мои отменённые мероприятия{% else %}Отменённые мероприятия{% endif %}</h1>{% include 'bookings/list.html' %}<div class="pagination">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}{% if mine %}&amp;mine=1{% endif %}">← Назад</a>{% endif %}{% if page.has_next %}<a href="?page={{ page.next_page_number }}{% if mine %}&amp;mine=1{% endif %}">Далее →</a>{% endif %}</div></section>{% endblock %}
+{% extends 'base.html' %}{% load static ui %}
+{% block title %}{% if mine %}Мои отменённые{% else %}Отменённые мероприятия{% endif %} · Наш офис{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="cancelled-page">
+  <a class="icon-button page-back" href="{% if mine %}{% url 'profile' %}{% else %}{% url 'users' %}{% endif %}" aria-label="Назад"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>
+  <div class="auth-head is-large">
+    <h1>{% if mine %}Мои отменённые{% else %}Все отменённые{% endif %}</h1>
+    <p>Сначала последние отмены</p>
+  </div>
+  {% if events %}
+  <div class="cancelled-list">{% for event in events %}
+    <article class="cancelled-card">
+      <a class="cancelled-main" href="{% url 'event_detail' event.pk %}">
+        <span class="agenda-times is-date"><b>{{ event.date|date:'j' }}</b><span>{{ event.date|month_short }}</span></span>
+        <span class="cancelled-text"><b>{{ event.title }}</b><small>{{ event.start_time|time:'H:i' }}–{{ event.end_time|time:'H:i' }} · {% for room in event.rooms %}{{ room.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</small></span>
+      </a>
+      <div class="cancelled-foot">
+        <span>{% if event.cancelled_at %}Отменено {{ event.cancelled_at|chat_day|lower }}, {{ event.cancelled_at|time:'H:i' }}{% else %}Отменено{% endif %}</span>
+        {% if event.can_edit %}<form method="post" action="{% url 'event_status' event.pk 'restore' %}">{% csrf_token %}<button class="button secondary button-m" type="submit"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#refresh"/></svg>Восстановить</button></form>{% endif %}
+      </div>
+    </article>{% endfor %}
+  </div>
+  {% else %}
+  <div class="empty-card"><div class="empty-state"><span class="empty-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#calendar"/></svg></span><h2>Отменённых нет</h2><p>Здесь появятся отменённые встречи — их можно будет восстановить.</p></div></div>
+  {% endif %}
+  {% if page.has_previous or page.has_next %}<div class="pagination">{% if page.has_previous %}<a href="?page={{ page.previous_page_number }}{% if mine %}&amp;mine=1{% endif %}">← Назад</a>{% else %}<span></span>{% endif %}{% if page.has_next %}<a href="?page={{ page.next_page_number }}{% if mine %}&amp;mine=1{% endif %}">Далее →</a>{% endif %}</div>{% endif %}
+</section>
+{% endblock %}

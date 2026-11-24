@@ -1,1 +1,148 @@
-{% extends 'base.html' %}{% load static %}{% block title %}{{ title }} · Наш офис{% endblock %}{% block content %}<section class="form-page event-editor-page"><a class="back-link" href="{% if event %}{% url 'event_detail' event.pk %}{% else %}{% url 'home' %}?date={{ day|date:'Y-m-d' }}{% endif %}">← Назад</a><span class="eyebrow">КАЛЕНДАРЬ / МЕРОПРИЯТИЕ</span>{% if not event %}<h1>{{ title }}</h1><p class="intro">Выберите время и помещения. Время — по Белграду.</p>{% endif %}<form method="post" class="card form-card event-form">{% csrf_token %}{% if form.non_field_errors %}<div class="form-errors" role="alert">{{ form.non_field_errors }}</div>{% endif %}{% for field in form %}{% if field.name == 'rooms' %}<fieldset class="field room-field"><legend>{{ field.label }}</legend>{{ field }}{% if field.errors %}<div class="field-errors" role="alert">{{ field.errors }}</div>{% endif %}</fieldset>{% elif field.name == 'repeat_weekly' %}<div class="field hide-details-field"><label for="{{ field.id_for_label }}">{{ field }} {{ field.label }}</label>{{ field.errors }}</div>{% elif field.name == 'hide_details' %}<div class="field hide-details-field"><label for="{{ field.id_for_label }}">{{ field }} Private (не публиковать детали)</label>{{ field.errors }}</div>{% else %}<div class="field"><label for="{{ field.id_for_label }}">{{ field.label }}</label>{{ field }}{% if field.help_text %}<div class="help">{{ field.help_text }}</div>{% endif %}{% if field.errors %}<div class="field-errors" role="alert">{{ field.errors }}</div>{% endif %}</div>{% endif %}{% endfor %}{% if not event %}<p class="help">В пределах одного дня, с 06:00 до 23:00. Можно выбрать несколько помещений.</p>{% endif %}<button class="button primary" type="submit">{% if event %}Сохранить изменения{% else %}Добавить мероприятие{% endif %}<span aria-hidden="true">↗</span></button></form>{% if event and event.status != 'cancelled' %}<form class="event-actions{% if event.series_id %} series-cancel-actions{% endif %}" method="post" action="{% url 'event_status' event.pk 'cancel' %}">{% csrf_token %}{% if event.series_id %}<button class="button cancel-button" type="submit" name="scope" value="one">Отменить это событие</button><button class="button cancel-button" type="submit" name="scope" value="all">Отменить всю серию</button>{% else %}<button class="button cancel-button" type="submit">Отменить мероприятие</button>{% endif %}</form>{% endif %}</section><script src="{% static 'event-form.js' %}" defer></script>{% endblock %}
+{% extends 'base.html' %}{% load static %}
+{% block title %}{{ title }} · Наш офис{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="sheet-page booking-page" data-booking>
+  <span class="sheet-grabber" aria-hidden="true"></span>
+  <header class="sheet-nav">
+    <a class="icon-button sheet-close" href="{% if event %}{% url 'event_detail' event.pk %}{% else %}{% url 'home' %}?date={{ day|date:'Y-m-d' }}{% endif %}" aria-label="Закрыть" data-dialog-close><svg class="icon" aria-hidden="true"><use href="{{ icons }}#x"/></svg></a>
+    <h1>{{ title }}</h1>
+    <span class="sheet-nav-spacer" aria-hidden="true"></span>
+  </header>
+
+  <form method="post" class="booking-form" id="booking-form" action="{{ request.get_full_path }}">
+    {% csrf_token %}
+    {% if not user.is_verified %}
+    <div class="verify-banner{% if form.needs_verification %} is-error{% endif %}">
+      <b><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg>Аккаунт ещё не подтверждён</b>
+      <p>Пока можно бронировать одну встречу в день, до 2 часов и без повтора. Подтверждение снимет ограничения.</p>
+      {% if user.verification_requested_at %}<span class="verify-sent"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg>Запрос отправлен — администратор подтвердит аккаунт</span>
+      {% else %}<button class="button secondary button-m" type="submit" form="verify-form" data-verify-request><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg>Запросить подтверждение</button>{% endif %}
+    </div>
+    {% endif %}
+    {% if form.non_field_errors %}<div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg><div>{{ form.non_field_errors }}</div></div>{% endif %}
+
+    <div class="booking-columns">
+      <div class="booking-col">
+        <section class="panel">
+          <h2><label for="{{ form.title.id_for_label }}">Название</label></h2>
+          <div class="field-input{% if form.title.errors %} is-error{% endif %}">{{ form.title }}</div>
+          {% if form.title.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.title.errors|join:' ' }}</div>{% endif %}
+        </section>
+
+        <section class="panel">
+          <h2>Когда</h2>
+          {% if not event %}
+          <div class="chips" data-date-chips>{% for value, label in date_chips %}<button type="button" class="chip" data-date="{{ value|date:'Y-m-d' }}">{% if label %}{{ label }}{% else %}{{ value|date:'D'|capfirst }}, {{ value.day }}{% endif %}</button>{% endfor %}</div>
+          {% endif %}
+          <label class="field-input has-overlay{% if form.date.errors %} is-error{% endif %}">
+            <svg class="icon" aria-hidden="true"><use href="{{ icons }}#calendar"/></svg>
+            <span class="field-display" data-display="date"></span>
+            {{ form.date }}
+            <span class="visually-hidden">Дата</span>
+          </label>
+          {% if form.date.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.date.errors|join:' ' }}</div>{% endif %}
+          <div class="time-row">
+            <label class="field-input{% if form.start_time.errors %} is-error{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg>{{ form.start_time }}<span class="visually-hidden">Начало</span></label>
+            <svg class="icon time-arrow" aria-hidden="true"><use href="{{ icons }}#arrow-right"/></svg>
+            <div class="end-time">
+              <label class="field-input{% if form.end_time.errors %} is-error{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg>{{ form.end_time }}<span class="visually-hidden">Окончание</span></label>
+              <div class="time-list" role="listbox" aria-label="Время окончания" hidden data-time-list></div>
+            </div>
+          </div>
+          {% if form.start_time.errors or form.end_time.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.start_time.errors|join:' ' }} {{ form.end_time.errors|join:' ' }}</div>{% endif %}
+          <div class="chips" data-duration-chips>
+            <button type="button" class="chip" data-minutes="60">1 ч</button><button type="button" class="chip" data-minutes="90">1,5 ч</button><button type="button" class="chip" data-minutes="120">2 ч</button><button type="button" class="chip" data-minutes="180">3 ч</button><button type="button" class="chip" data-minutes="240">4 ч</button>
+          </div>
+          <p class="panel-hint">Нужно дольше — нажмите на время окончания. Бронь с 06:00 до 23:00 по Белграду</p>
+        </section>
+      </div>
+
+      <div class="booking-col">
+        <fieldset class="panel">
+          <legend class="panel-title"><h2>Помещения</h2><span>можно несколько</span></legend>
+          <div class="room-chips">{% for option in room_options %}<label class="room-chip room-{{ option.room.color }}"><input type="checkbox" name="rooms" value="{{ option.room.pk }}"{% if option.checked %} checked{% endif %}><i class="room-dot"></i>{{ option.room.name }}<svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg></label>{% endfor %}</div>
+          {% if form.rooms.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.rooms.errors|join:' ' }}</div>{% endif %}
+        </fieldset>
+
+        <section class="panel">
+          <div class="stepper-row">
+            <label for="{{ form.people_count.id_for_label }}">Количество людей</label>
+            <div class="stepper" data-stepper>
+              <button type="button" data-step="-1" aria-label="Меньше"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#minus"/></svg></button>
+              {{ form.people_count }}
+              <button type="button" data-step="1" aria-label="Больше"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#plus"/></svg></button>
+            </div>
+          </div>
+          {% if form.people_count.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.people_count.errors|join:' ' }}</div>{% endif %}
+          <label class="field-label" for="{{ form.responsible.id_for_label }}">Ответственный</label>
+          <div class="field-input is-select"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>{{ form.responsible }}</div>
+          {% if form.responsible.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.responsible.errors|join:' ' }}</div>{% endif %}
+        </section>
+
+        <section class="panel">
+          <label class="switch-row">
+            <span><b>Не публиковать детали</b><small>Другие увидят только «Занято», время и помещения</small></span>
+            {{ form.hide_details }}<span class="switch" aria-hidden="true"></span>
+          </label>
+          {% if form.repeat_weekly and not user.is_verified %}
+          <label class="switch-row is-disabled">
+            <span><b>Повторять каждую неделю</b><small>Доступно после подтверждения аккаунта</small></span>
+            <input type="checkbox" disabled aria-label="Повторять каждую неделю — после подтверждения аккаунта"><span class="switch" aria-hidden="true"></span>
+          </label>
+          {% if form.repeat_weekly.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.repeat_weekly.errors|join:' ' }}</div>{% endif %}
+          {% elif form.repeat_weekly %}
+          <label class="switch-row">
+            <span><b>Повторять каждую неделю</b><small>Тот же день недели и время</small></span>
+            {{ form.repeat_weekly }}<span class="switch" aria-hidden="true"></span>
+          </label>
+          <label class="field-input has-overlay repeat-until{% if form.repeat_until.errors %} is-error{% endif %}" data-repeat-until>
+            <svg class="icon" aria-hidden="true"><use href="{{ icons }}#repeat"/></svg>
+            <span class="field-display" data-display="until"></span>
+            {{ form.repeat_until }}
+            <span class="visually-hidden">Повторять до</span>
+          </label>
+          {% if form.repeat_until.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.repeat_until.errors|join:' ' }}</div>{% endif %}
+          {% elif series %}
+          <div class="field-input is-static"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#repeat"/></svg><span>{{ series.every|capfirst }} до {{ series.until|date:'j E' }}</span></div>
+          <p class="panel-hint">Встреча из серии · {{ series.index }} из {{ series.total }}. При сохранении спросим, менять ли следующие.</p>
+          {% endif %}
+          <label class="switch-row">
+            <span><b>Нужен ключ</b><small>Сообщим администраторам — они напишут в «Сообщения», как его получить</small></span>
+            {{ form.key_needed }}<span class="switch" aria-hidden="true"></span>
+          </label>
+        </section>
+
+        {% if event and event.status != 'cancelled' %}
+        <section class="panel">
+          <h2>Отмена</h2>
+          <button class="button danger" type="submit" form="cancel-form" name="scope" value="one">{% if event.series_id %}Отменить эту встречу{% else %}Отменить встречу{% endif %}</button>
+          {% if event.series_id %}<button class="button danger" type="submit" form="cancel-form" name="scope" value="future">Отменить эту и все следующие</button>{% endif %}
+          <p class="panel-hint">Отменённые встречи не занимают календарь. Их можно восстановить в профиле.</p>
+        </section>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if series %}
+    <dialog class="sheet-dialog" data-scope-dialog aria-labelledby="scope-title">
+      <span class="sheet-grabber" aria-hidden="true"></span>
+      <h2 id="scope-title">Сохранить изменения</h2>
+      <p class="sheet-subtitle">Встреча повторяется {{ series.every }} до {{ series.until|date:'j E' }}</p>
+      <label class="radio-row"><input type="radio" name="scope" value="one" checked><span><b>Только эта встреча</b><small>{{ series.from|date:'l, j E'|capfirst }}</small></span></label>
+      <label class="radio-row"><input type="radio" name="scope" value="future"><span><b>Эта и все следующие</b><small>С {{ series.from|date:'j E' }} по {{ series.until|date:'j E' }} · {{ series.following }} {% if series.following == 1 %}встреча{% elif series.following < 5 %}встречи{% else %}встреч{% endif %}</small></span></label>
+      <button class="button primary" type="submit" name="confirm_scope" value="1">Сохранить</button>
+      <button class="button ghost button-m" type="button" data-scope-cancel>Вернуться к редактированию</button>
+    </dialog>
+    {% endif %}
+
+    <div class="sheet-actions">
+      <span class="sheet-note">{% if event %}Изменения сразу появятся в календаре{% else %}Встреча сразу появится в календаре{% endif %}</span>
+      <a class="button ghost button-m sheet-cancel" href="{% if event %}{% url 'event_detail' event.pk %}{% else %}{% url 'home' %}?date={{ day|date:'Y-m-d' }}{% endif %}" data-dialog-close>Отмена</a>
+      <button class="button primary" type="submit" {% if series %}data-open-scope{% endif %}>{% if event %}Сохранить{% else %}Забронировать{% endif %}</button>
+    </div>
+  </form>
+  {% if not user.is_verified and not user.verification_requested_at %}<form id="verify-form" method="post" action="{% url 'request_verification' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>{% endif %}
+  {% if event and event.status != 'cancelled' %}<form id="cancel-form" method="post" action="{% url 'event_status' event.pk 'cancel' %}">{% csrf_token %}</form>{% endif %}
+</section>
+{% endblock %}

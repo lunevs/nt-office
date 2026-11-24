@@ -1,31 +1,84 @@
-{% extends 'base.html' %}
+{% extends 'base.html' %}{% load static ui tz %}
 {% block title %}Управление · Наш офис{% endblock %}
-{% block content %}
+{% block tabbar %}{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}{% get_current_timezone as app_timezone %}
 <section class="management-page">
-  <a class="button secondary cancelled-management-button" href="{% url 'events_cancelled' %}">Все отменённые мероприятия <span aria-hidden="true">→</span></a>
-  <div class="section-heading"><h2>Все пользователи</h2><span class="count">{{ all_users|length }}</span></div>
-  <div class="user-list">
+  <a class="icon-button page-back" href="{% url 'home' %}" aria-label="Назад"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>
+  <div class="auth-head">
+    <h1>Управление</h1>
+    <p>{{ all_users|length|ru_plural:"участник,участника,участников" }}{% if requests %} · {{ requests|length|ru_plural:"запрос,запроса,запросов" }}{% endif %}{% if keys %} · {{ keys|length|ru_plural:"ключ,ключа,ключей" }}{% endif %}{% if blocked_count %} · {{ blocked_count }} заблокирован{% if blocked_count > 1 %}о{% endif %}{% endif %}</p>
+  </div>
+
+  {% if requests %}
+  <div class="section-row"><h2>Запросы на подтверждение</h2><b class="badge-count">{{ requests|length }}</b></div>
+  <div class="user-cards">{% for person in requests %}
+    <article class="request-row">
+      <div class="request-head">
+        <span class="avatar small-avatar" aria-hidden="true">{{ person.last_name|first }}{{ person.first_name|first }}</span>
+        <span class="user-text"><b>{{ person.last_name }} {{ person.first_name }}</b><small>@{{ person.username }} · запрос {{ person.verification_requested_at|chat_day|lower }}</small></span>
+      </div>
+      <div class="request-actions">
+        <form method="post" action="{% url 'user_access' person.pk 'reject' %}">{% csrf_token %}<button class="button secondary button-m" type="submit">Отклонить</button></form>
+        <form method="post" action="{% url 'user_access' person.pk 'verify' %}">{% csrf_token %}<button class="button primary button-m" type="submit"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg>Подтвердить</button></form>
+      </div>
+    </article>{% endfor %}
+  </div>
+  {% endif %}
+
+  {% if keys %}
+  <div class="section-row"><h2>Нужен ключ</h2><span>{{ keys|length }}</span></div>
+  <div class="user-cards">{% for event in keys %}
+    <article class="request-row">
+      <a class="key-head" href="{% url 'event_detail' event.pk %}"><span class="key-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#key"/></svg></span><span><b>{{ event.title }}</b><small>{{ event.date|date:'D, j'|capfirst }} {{ event.date|month_short }} · {{ event.start_time|time:'H:i' }}–{{ event.end_time|time:'H:i' }} · {% for room in event.rooms.all %}{{ room.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</small><small>Кто просит: {{ event.author.last_name }} {{ event.author.first_name }}</small></span></a>
+      <div class="request-actions">
+        <a class="button secondary button-m" href="{% url 'message_thread' event.author.pk %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#message"/></svg>Написать</a>
+        <form method="post" action="{% url 'event_key_handled' event.pk %}">{% csrf_token %}<button class="button primary button-m" type="submit"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg>Ключ выдан</button></form>
+      </div>
+    </article>{% endfor %}
+  </div>
+  {% endif %}
+
+  <div class="list-card">
+    <a class="list-row" href="{% url 'events_cancelled' %}"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#x"/></svg></span><span class="list-title">Все отменённые мероприятия</span><svg class="icon list-chevron" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>
+  </div>
+
+  <div class="section-row"><h2>Пользователи</h2><span>{{ all_users|length }}</span></div>
+  <div class="user-cards">
     {% for person in all_users %}
-    <article class="card user-card active-user-card">
-      <div class="user-identity">
-        <div class="avatar small-avatar" aria-hidden="true">{{ person.first_name|first }}{{ person.last_name|first }}</div>
-        <div><h3>{{ person.last_name }} {{ person.first_name }}</h3><p class="muted">@{{ person.username }}</p>{% if not person.is_active %}<span class="status-badge status-cancelled">Заблокирован</span>{% endif %}</div>
-      </div>
-      <div class="user-actions">
-        {% if person.pk != user.pk %}
-        <a class="edit-profile-button" href="{% url 'reset_password' person.pk %}" aria-label="Сбросить пароль: {{ person.last_name }} {{ person.first_name }}" title="Сбросить пароль"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m13 6 5 5"/></svg></a>
-        {% if not person.is_superuser %}
-        <form method="post" action="{% if person.is_active %}{% url 'user_access' person.pk 'block' %}{% else %}{% url 'user_access' person.pk 'unblock' %}{% endif %}">
-          {% csrf_token %}
-          <button class="edit-profile-button access-lock{% if not person.is_active %} blocked-access{% endif %}" type="submit" title="{% if person.is_active %}Заблокировать{% else %}Разблокировать{% endif %}" aria-label="{% if person.is_active %}Заблокировать{% else %}Разблокировать{% endif %}: {{ person.last_name }} {{ person.first_name }}"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="4" y="10" width="16" height="11" rx="2"/>{% if person.is_active %}<path d="M8 10V6a4 4 0 0 1 8 0v4"/>{% else %}<path d="M8 10V6a4 4 0 0 1 7.5-2"/>{% endif %}<path d="M12 14v3"/></svg></button>
-        </form>
-        {% endif %}
-        {% endif %}
-      </div>
+    <article class="user-row{% if not person.is_active %} is-blocked{% endif %}">
+      <span class="avatar small-avatar" aria-hidden="true">{{ person.last_name|first }}{{ person.first_name|first }}</span>
+      <span class="user-text"><b>{{ person.last_name }} {{ person.first_name }}</b><small>@{{ person.username }}{% if not person.is_active %} · <span class="is-danger">Заблокирован</span>{% elif not person.is_verified %} · не подтверждён{% endif %}</small></span>
+      {% if person.pk == user.pk %}
+        <span class="user-me">Это вы</span>
+      {% elif not person.is_active %}
+        <form method="post" action="{% url 'user_access' person.pk 'unblock' %}">{% csrf_token %}<button class="button secondary button-m" type="submit" aria-label="Разблокировать: {{ person.last_name }} {{ person.first_name }}">Разблокировать</button></form>
+      {% else %}
+        <span class="user-actions">
+          {% if not person.is_verified %}<form method="post" action="{% url 'user_access' person.pk 'verify' %}">{% csrf_token %}<button class="icon-button is-muted" type="submit" aria-label="Подтвердить аккаунт: {{ person.last_name }} {{ person.first_name }}" title="Подтвердить аккаунт"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg></button></form>{% endif %}
+          <a class="icon-button is-muted" href="{% url 'reset_password' person.pk %}" data-sheet aria-label="Сбросить пароль: {{ person.last_name }} {{ person.first_name }}" title="Сбросить пароль"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#key"/></svg></a>
+          {% if not person.is_superuser %}<form method="post" action="{% url 'user_access' person.pk 'block' %}">{% csrf_token %}<button class="icon-button is-muted" type="submit" aria-label="Заблокировать: {{ person.last_name }} {{ person.first_name }}" title="Заблокировать"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg></button></form>{% endif %}
+        </span>
+      {% endif %}
     </article>
     {% empty %}<p class="muted">Пользователей пока нет.</p>{% endfor %}
   </div>
-  <div class="section-heading"><h2>Настройки приложения</h2></div>
-  <div class="card"><p class="muted">Часовой пояс</p><strong>Белград · {% load tz %}{% get_current_timezone as app_timezone %}{{ app_timezone }}</strong><p class="help">Все мероприятия используют этот часовой пояс. Переход на летнее и зимнее время учитывается автоматически.</p></div>
+
+  <h2 class="section-title">Настройки</h2>
+  <div class="list-card">
+    <div class="list-row"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg></span><span class="list-title">Часовой пояс</span><span class="list-value" title="{{ app_timezone }}">Белград</span></div>
+  </div>
+  <p class="panel-hint management-note">Все мероприятия используют этот часовой пояс, переход на летнее время учитывается автоматически.</p>
+
+  {% if reset_user %}
+  <dialog class="sheet-dialog reset-done" data-open-on-load aria-labelledby="reset-title">
+    <span class="sheet-grabber" aria-hidden="true"></span>
+    <span class="empty-icon is-small"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg></span>
+    <h2 id="reset-title">Пароль сброшен</h2>
+    <p class="sheet-subtitle">Передайте временный пароль лично. При входе {{ reset_user.first_name|default:reset_user.username }} сразу сменит его на свой.</p>
+    <div class="temp-password"><b data-copy-source>{{ reset_password }}</b><button class="button secondary button-m" type="button" data-copy>Скопировать</button></div>
+    <form method="dialog"><button class="button primary">Готово</button></form>
+    {% if reset_user.is_active %}<a class="button ghost button-m" href="{% url 'message_thread' reset_user.pk %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#message"/></svg>Открыть переписку</a>{% endif %}
+  </dialog>
+  {% endif %}
 </section>
 {% endblock %}

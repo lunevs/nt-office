@@ -1,0 +1,32 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Регистрация · Наш офис{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="password-page auth-page">
+  <a class="icon-button page-back" href="{% url 'login' %}" aria-label="Назад"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>
+  <div class="auth-head">
+    <h1>Регистрация</h1>
+    <p>Бронировать можно сразу после регистрации</p>
+  </div>
+  {% if telegram_oauth_url %}
+  <a class="button telegram-button" href="{{ telegram_oauth_url }}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg>Продолжить с Telegram</a>
+  <div class="or-divider"><span>или заполните вручную</span></div>
+  {% endif %}
+  <form method="post" class="auth-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg><div>{{ form.non_field_errors }}</div></div>{% endif %}
+    {% for field in form.visible_fields %}
+    <div class="sheet-field">
+      <label class="visually-hidden" for="{{ field.id_for_label }}">{{ field.label }}</label>
+      <div class="field-input{% if field.errors %} is-error{% endif %}">{% if field.name == 'username' %}<svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>{% elif field.name == 'password1' %}<svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg>{% endif %}{{ field }}</div>
+      {% if field.name == 'username' and not field.errors %}<p class="panel-hint">{{ field.help_text }}</p>{% endif %}
+      {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    <div class="auth-actions">
+      <button class="button primary" type="submit">Зарегистрироваться</button>
+      <a class="button ghost button-m" href="{% url 'login' %}">Уже есть аккаунт? Войти</a>
+    </div>
+  </form>
+</section>
+{% endblock %}

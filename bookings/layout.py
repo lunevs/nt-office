@@ -4,9 +4,10 @@ def minute(value):
     return value.hour * 60 + value.minute
 
 
-def day_layout(events, user=None):
+def day_layout(events, user=None, now_minute=None):
+    """now_minute — текущая минута дня, если показываем сегодняшний день: даёт отметку «сейчас» на шкале."""
     if not events:
-        return {"groups": [], "hours": [], "height": 0}
+        return {"groups": [], "hours": [], "height": 0, "now_top": None}
     start_minute = min(minute(event.start_time) for event in events)
     end_minute = max(minute(event.end_time) for event in events)
     pixels_per_minute = 0.6
@@ -64,4 +65,5 @@ def day_layout(events, user=None):
         if position(value) - position(markers[-1]) >= 24 and height - position(value) >= 24:
             markers.append(value)
     markers.append(end_minute)
-    return {"groups": groups, "hours": [{"label": f"{value // 60:02}:{value % 60:02}", "top": position(value)} for value in markers], "height": height}
+    now_top = position(now_minute) if now_minute is not None and start_minute <= now_minute <= end_minute else None
+    return {"groups": groups, "hours": [{"label": f"{value // 60:02}:{value % 60:02}", "top": position(value)} for value in markers], "height": height, "now_top": now_top}

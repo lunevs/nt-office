@@ -7,6 +7,16 @@ from django.db.models.functions import Lower
 class User(AbstractUser):
     must_change_password = models.BooleanField(default=False)
     session_version = models.PositiveIntegerField(default=0, editable=False)
+    # Подтверждённый аккаунт: без ограничений на бронирование. Неподтверждённый — одна встреча в день,
+    # до 2 часов, без повтора. Подтверждение запрашивают у администратора.
+    verified = models.BooleanField("Аккаунт подтверждён", default=False)
+    verification_requested_at = models.DateTimeField("Запрошено подтверждение", null=True, blank=True, db_index=True)
+    # Telegram: вход без пароля на сайте и в мини-приложении, уведомления от бота.
+    telegram_id = models.BigIntegerField("Telegram ID", null=True, blank=True, unique=True)
+    telegram_username = models.CharField("Имя в Telegram", max_length=64, blank=True)
+    notify_messages = models.BooleanField("Уведомлять о сообщениях", default=True)
+    notify_events = models.BooleanField("Уведомлять об изменениях моих встреч", default=True)
+    notify_requests = models.BooleanField("Уведомлять о заявках на доступ", default=True)
 
     def _versioned_session_hash(self, value):
         if not self.session_version:
@@ -22,6 +32,16 @@ class User(AbstractUser):
 
     class Meta:
         constraints = [models.UniqueConstraint(Lower("username"), name="unique_username_case_insensitive")]
+
+    @property
+    def short_name(self):
+        """«Смирнова О.» — как в карточках встреч."""
+        initial = f" {self.first_name[:1]}." if self.first_name else ""
+        return f"{self.last_name}{initial}".strip() or self.username
+
+    @property
+    def is_verified(self):
+        return self.verified or self.is_superuser
 
     @property
     def is_administrator(self):

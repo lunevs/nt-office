@@ -1,8 +1,94 @@
-{% extends 'base.html' %}{% block title %}Календарь · Наш офис{% endblock %}{% block content %}
-<section class="calendar-page"><div class="calendar-heading"><div><h1 class="weekday-title">{% if calendar_mode == 'month' %}{{ day|date:'F Y'|capfirst }}{% else %}{{ day|date:'l'|capfirst }}{% endif %}</h1></div><a class="button primary calendar-add" href="{% url 'event_create' %}?date={{ day|date:'Y-m-d' }}">Добавить</a></div>
-<nav class="calendar-mode" aria-label="Вид календаря"><a href="?view=day&amp;date={{ day|date:'Y-m-d' }}" {% if calendar_mode == 'day' %}aria-current="page"{% endif %}>День</a><a href="?view=month&amp;date={{ day|date:'Y-m-d' }}" {% if calendar_mode == 'month' %}aria-current="page"{% endif %}>Месяц</a></nav><div class="day-toolbar">{% if previous %}<a class="day-arrow" href="?date={{ previous|date:'Y-m-d' }}{% if calendar_mode == 'month' %}&amp;view=month{% endif %}" aria-label="{% if calendar_mode == 'month' %}Предыдущий месяц{% else %}Предыдущий день{% endif %}">‹</a>{% else %}<span class="day-arrow disabled-arrow" aria-hidden="true">‹</span>{% endif %}<form method="get" class="date-picker">{% if calendar_mode == 'month' %}<input type="hidden" name="view" value="month">{% endif %}<label for="calendar-date" class="visually-hidden">Выберите дату</label><div class="date-controls"><input id="calendar-date" type="date" name="date" value="{{ day|date:'Y-m-d' }}" min="1900-01-02" max="9999-12-30" required onchange="if (this.value &amp;&amp; this.validity.valid) this.form.requestSubmit()"></div></form>{% if next %}<a class="day-arrow" href="?date={{ next|date:'Y-m-d' }}{% if calendar_mode == 'month' %}&amp;view=month{% endif %}" aria-label="{% if calendar_mode == 'month' %}Следующий месяц{% else %}Следующий день{% endif %}">›</a>{% else %}<span class="day-arrow disabled-arrow" aria-hidden="true">›</span>{% endif %}</div>
-{% if calendar_mode == 'month' %}{% include 'bookings/month.html' %}<h2 class="selected-day-heading">{{ day|date:'l, j E'|capfirst }}</h2>{% endif %}
-{% if event_count %}<div class="timeline" style="height:{{ height|stringformat:'.2f' }}px" aria-label="Расписание на {{ day|date:'j E Y' }}">{% for hour in hours %}<div class="hour-line" style="top:{{ hour.top|stringformat:'.2f' }}px"><span>{{ hour.label }}</span></div>{% endfor %}
-<div class="event-track">{% for group in groups %}<div class="event-group {% if group.stacked %}dense-group{% endif %}" style="top:{{ group.top|stringformat:'.2f' }}px;height:{{ group.height|stringformat:'.2f' }}px">{% for card in group.cards %}<a class="event-card" href="{% url 'event_detail' card.event.pk %}" {% if not group.stacked %}style="top:{{ card.top|stringformat:'.2f' }}px;height:{{ card.height|stringformat:'.2f' }}px;left:{{ card.left|stringformat:'.2f' }}%;width:{{ card.width|stringformat:'.2f' }}%"{% endif %}><span class="event-time">{{ card.event.start_time|time:'H:i' }}–{{ card.event.end_time|time:'H:i' }}</span><strong>{{ card.event.title }}{% if not card.event.details_visible %} · {{ card.event.responsible.last_name }} {{ card.event.responsible.first_name }}{% endif %}</strong>{% include "bookings/status.html" with event=card.event %}<span class="event-rooms">{% for room in card.event.rooms.all %}{{ room.name }}{% if not forloop.last %} · {% endif %}{% endfor %}</span></a>{% endfor %}</div>{% endfor %}</div></div>
-{% else %}<p class="empty-calendar-message">Мероприятий не запланировано</p>{% endif %}
-</section>{% endblock %}
+{% extends 'base.html' %}{% load static ui %}
+{% block title %}Календарь · Наш офис{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="calendar-page is-{{ calendar_mode }}">
+
+  <p class="cal-greeting"><span>Привет,</span> {{ user.first_name|default:user.username }}</p>
+
+  <div class="cal-actions">
+    <nav class="segmented" aria-label="Вид календаря">
+      <a href="?view=day&amp;date={{ day|date:'Y-m-d' }}" {% if calendar_mode == 'day' %}aria-current="page"{% endif %}>День</a>
+      <a href="?view=month&amp;date={{ day|date:'Y-m-d' }}" {% if calendar_mode == 'month' %}aria-current="page"{% endif %}>Месяц</a>
+    </nav>
+    {% include 'partials/admin_gear.html' %}
+  </div>
+
+  <div class="cal-title">
+    <form method="get" class="date-jump">
+      {% if calendar_mode == 'month' %}<input type="hidden" name="view" value="month">{% endif %}
+      <h1>{% if calendar_mode == 'month' %}{{ day|date:'F'|capfirst }} <span>{{ day|date:'Y' }}</span>{% else %}{{ day|date:'l'|capfirst }}, <span>{{ day|date:'j E' }}</span>{% endif %}</h1>
+      <input id="calendar-date" class="date-jump-input" type="date" name="date" value="{{ day|date:'Y-m-d' }}" min="1900-01-02" max="9999-12-30" required aria-label="Выбрать дату" onclick="this.showPicker &amp;&amp; this.showPicker()" onchange="if (this.value &amp;&amp; this.validity.valid) this.form.requestSubmit()">
+    </form>
+    <div class="cal-arrows">
+      {% if previous %}<a class="icon-button" href="?date={{ previous|date:'Y-m-d' }}{% if calendar_mode == 'month' %}&amp;view=month{% endif %}" aria-label="{% if calendar_mode == 'month' %}Предыдущий месяц{% else %}Предыдущий день{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>{% endif %}
+      {% if next %}<a class="icon-button" href="?date={{ next|date:'Y-m-d' }}{% if calendar_mode == 'month' %}&amp;view=month{% endif %}" aria-label="{% if calendar_mode == 'month' %}Следующий месяц{% else %}Следующий день{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>{% endif %}
+    </div>
+  </div>
+
+{% if calendar_mode == 'day' %}
+  <nav class="week-strip" aria-label="Неделя">
+    {% if previous_week %}<a class="week-arrow" href="?date={{ previous_week|date:'Y-m-d' }}" aria-label="Предыдущая неделя"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>{% else %}<span class="week-arrow"></span>{% endif %}
+    {% for wd in week_days %}<a class="week-day{% if wd.selected %} is-selected{% endif %}{% if wd.today %} is-today{% endif %}" href="?date={{ wd.date|date:'Y-m-d' }}" aria-label="{{ wd.date|date:'l, j E' }}{% if wd.busy %}, есть встречи{% endif %}"{% if wd.selected %} aria-current="date"{% endif %}><span class="week-day-name">{{ wd.label }}</span><span class="week-day-num">{{ wd.date.day }}</span><span class="week-day-dot{% if not wd.busy %} is-empty{% endif %}" aria-hidden="true"></span></a>{% endfor %}
+    {% if next_week %}<a class="week-arrow" href="?date={{ next_week|date:'Y-m-d' }}" aria-label="Следующая неделя"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>{% else %}<span class="week-arrow"></span>{% endif %}
+  </nav>
+
+  <div class="cal-aside">
+  {% if now_event %}
+  <a class="now-card" href="{% url 'event_detail' now_event.pk %}">
+    <span class="now-eyebrow"><span>Сейчас · {{ now_event.left }}</span><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></span>
+    <span class="now-title">{{ now_event.title }}</span>
+    <span class="now-meta">
+      <span><svg class="icon" aria-hidden="true"><use href="{{ icons }}#pin"/></svg>{% for room in now_event.rooms %}{{ room.name }}{% if not forloop.last %} · {% endif %}{% endfor %}</span>
+      <span><svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>{{ now_event.responsible.short_name }}</span>
+    </span>
+  </a>
+  {% endif %}
+
+  <div class="mini-month-card">
+    <div class="mini-month-head">
+      <h2>{{ day|date:'F Y'|capfirst }}</h2>
+      {% if month_previous %}<a class="icon-button is-ghost" href="?date={{ month_previous|date:'Y-m-d' }}" aria-label="Предыдущий месяц"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>{% endif %}
+      {% if month_next %}<a class="icon-button is-ghost" href="?date={{ month_next|date:'Y-m-d' }}" aria-label="Следующий месяц"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>{% endif %}
+    </div>
+    {% include 'bookings/month.html' with mini=True %}
+  </div>
+
+  {% if rooms_now %}
+  <div class="rooms-now">
+    <div class="rooms-now-head"><h2>Помещения сейчас</h2><span>{{ now_label }}</span></div>
+    {% for item in rooms_now %}<div class="rooms-now-row"><i class="room-dot room-{{ item.room.color }}"></i><span>{{ item.room.name }}</span><b class="{% if item.busy %}is-busy{% else %}is-free{% endif %}">{{ item.label }}</b></div>{% endfor %}
+  </div>
+  {% endif %}
+  </div>
+
+
+  <div class="cal-main">
+  {% if event_count %}
+    <div class="timeline-card">
+      <div class="timeline" style="--th:{{ height|stringformat:'.2f' }}" aria-label="Расписание на {{ day|date:'j E Y' }}">
+        {% for hour in hours %}<div class="hour-line" style="--top:{{ hour.top|stringformat:'.2f' }}"><span>{{ hour.label }}</span></div>{% endfor %}
+        {% if now_top is not None %}<div class="now-marker" style="--top:{{ now_top|stringformat:'.2f' }}"><span class="now-pill">{{ now_label }}</span></div>{% endif %}
+        <div class="event-track">{% for group in groups %}<div class="event-group{% if group.stacked %} dense-group{% endif %}" style="--top:{{ group.top|stringformat:'.2f' }};--h:{{ group.height|stringformat:'.2f' }}">{% for card in group.cards %}{% include 'bookings/_event_card.html' with event=card.event card=card positioned=group.stacked|yesno:',1' %}{% endfor %}</div>{% endfor %}</div>
+      </div>
+    </div>
+  {% else %}
+    {% include 'bookings/_empty_day.html' %}
+  {% endif %}
+  </div>
+
+
+{% else %}
+  <div class="month-card">{% include 'bookings/month.html' %}</div>
+
+  <div class="day-panel">
+    <div class="day-heading"><h2>{% if day == today %}Сегодня, {{ day|date:'j E' }}{% else %}{{ day|date:'l, j E'|capfirst }}{% endif %}</h2>{% if event_count %}<span>{{ event_count|ru_plural:"встреча,встречи,встреч" }}</span>{% endif %}</div>
+    {% if agenda %}
+      <div class="agenda">{% for event in agenda %}{% include 'bookings/_agenda_item.html' %}{% endfor %}</div>
+    {% else %}
+      {% include 'bookings/_empty_day.html' %}
+    {% endif %}
+    <a class="button secondary day-book" href="{% url 'event_create' %}?date={{ day|date:'Y-m-d' }}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#plus"/></svg>Забронировать на {{ day|date:'j E' }}</a>
+  </div>
+{% endif %}
+</section>
+{% endblock %}

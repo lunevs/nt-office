@@ -1,0 +1,33 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}{{ title }} · Наш офис{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="sheet-page form-sheet" data-sheet-page>
+  <span class="sheet-grabber" aria-hidden="true"></span>
+  <div class="form-sheet-head">
+    <h1>{{ title }}</h1>
+    <p class="sheet-subtitle">{{ subtitle }}</p>
+  </div>
+  <form method="post" action="{{ request.get_full_path }}" class="form-sheet-body" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg><div>{{ form.non_field_errors }}</div></div>{% endif %}
+    {% for field in form.visible_fields %}
+    <div class="sheet-field">
+      <label class="field-label" for="{{ field.id_for_label }}">{% if login_field %}Новый логин{% else %}{{ field.label }}{% endif %}</label>
+      <div class="sheet-field-row">
+        <div class="field-input{% if field.errors %} is-error{% endif %}">
+          {% if login_field %}<svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>{% elif temporary_password %}<svg class="icon" aria-hidden="true"><use href="{{ icons }}#key"/></svg>{% endif %}
+          {{ field }}
+        </div>
+        {% if temporary_password %}<button class="icon-button" type="button" data-generate-password aria-label="Придумать другой пароль" title="Придумать другой"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#refresh"/></svg></button>{% endif %}
+      </div>
+      {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+    </div>
+    {% endfor %}
+    {% for field in form.hidden_fields %}{{ field }}{% endfor %}
+    {% if temporary_password %}<p class="panel-hint">Придумали за вас — можно заменить своим. Не короче {{ minimum }} символов.</p>{% endif %}
+    <button class="button {{ submit_style }}" type="submit">{{ submit }}</button>
+    <a class="button ghost button-m" href="{{ cancel_url }}" data-dialog-close>Отмена</a>
+  </form>
+</section>
+{% endblock %}

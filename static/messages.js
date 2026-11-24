@@ -60,6 +60,11 @@
       busy = false;
     }
   };
+  // Поле ввода растёт вместе с текстом (в макете — однострочная пилюля)
+  const text = composer.querySelector('textarea');
+  const grow = () => { text.style.height = 'auto'; text.style.height = `${Math.min(text.scrollHeight, 160)}px`; };
+  text.addEventListener('input', grow);
+  grow();
   if (!history) scrollToLatest();
   update();
   const timer = setInterval(update, 5000);

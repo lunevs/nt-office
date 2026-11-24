@@ -1,1 +1,0 @@
-{% if event.status == 'cancelled' or event.has_conflict %}<div class="event-badges">{% if event.status == 'cancelled' %}<span class="status-badge status-cancelled">× Отменено</span>{% endif %}{% if event.has_conflict %}<span class="conflict-badge">⚠ Пересечение</span>{% endif %}</div>{% endif %}

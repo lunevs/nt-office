@@ -5,7 +5,7 @@ from django.db import transaction
 from django.utils import timezone
 from .models import Event, EventSeries
 
-FIELDS = ('title', 'date', 'start_time', 'end_time', 'people_count', 'responsible', 'hide_details')
+FIELDS = ('title', 'date', 'start_time', 'end_time', 'people_count', 'responsible', 'hide_details', 'key_needed')
 
 
 def lock_event(pk):

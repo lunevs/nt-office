@@ -1,0 +1,31 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Вход по логину · Наш офис{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="password-page auth-page">
+  <a class="icon-button page-back" href="{% url 'telegram_join' %}" aria-label="Назад" data-tg-back><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>
+  <div class="auth-head">
+    <h1>Вход по логину</h1>
+    <p>Войдите один раз — дальше Telegram будет входить сам.</p>
+  </div>
+  <form method="post" class="auth-form" novalidate>
+    {% csrf_token %}
+    {% if login_error == 'inactive' %}
+      <div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg><div><b>Аккаунт заблокирован</b><p>Доступ закрыт администратором. Обратитесь к администратору офиса.</p></div></div>
+    {% elif form.non_field_errors %}
+      <div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg><div><b>{{ form.non_field_errors|join:' ' }}</b><p>Проверьте раскладку и регистр букв.</p></div></div>
+    {% endif %}
+    <div class="sheet-field">
+      <label class="field-label" for="{{ form.username.id_for_label }}">Логин</label>
+      <div class="field-input"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>{{ form.username }}</div>
+    </div>
+    <div class="sheet-field">
+      <label class="field-label" for="{{ form.password.id_for_label }}">Пароль</label>
+      <div class="field-input{% if login_error == 'invalid_login' %} is-error{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg>{{ form.password }}</div>
+    </div>
+    <p class="panel-hint">Забыли пароль? Обратитесь к администратору.</p>
+    <div class="auth-actions">
+      <button class="button primary" type="submit" data-tg-main>Войти и привязать Telegram</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,11 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Наш офис{% endblock %}
+{% block head %}{% if not in_telegram %}<script src="https://telegram.org/js/telegram-web-app.js?57"></script>{% endif %}{% endblock %}
+{% block scripts %}{% if not in_telegram %}<script src="{% static 'telegram.js' %}" defer></script>{% endif %}{% endblock %}
+{% block content %}
+<section class="tg-entry" data-telegram-entry data-auth="{% url 'telegram_auth' %}" data-fallback="{% url 'login' %}">
+  {% csrf_token %}
+  <img src="{% static 'favicon.svg' %}" alt="" width="64" height="64">
+  <p class="tg-entry-text" data-status>Входим через Telegram…</p>
+</section>
+{% endblock %}

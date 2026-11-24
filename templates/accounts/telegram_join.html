@@ -1,0 +1,29 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Новый аккаунт · Наш офис{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="password-page auth-page">
+  <img class="auth-logo" src="{% static 'favicon.svg' %}" alt="" width="56" height="56">
+  <div class="auth-head">
+    <h1>Здравствуйте{% if tg.first_name %}, {{ tg.first_name }}{% endif %}!</h1>
+    <p>Это календарь офиса New Territory. Проверьте данные из Telegram и создайте аккаунт — бронировать можно сразу.</p>
+  </div>
+  <form method="post" class="auth-form" novalidate>
+    {% csrf_token %}
+    {% if form.non_field_errors %}<div class="inline-alert" role="alert"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg><div>{{ form.non_field_errors }}</div></div>{% endif %}
+    <div class="panel">
+      {% for field in form %}
+      <div class="sheet-field">
+        <label class="field-label" for="{{ field.id_for_label }}">{{ field.label }}</label>
+        <div class="field-input{% if field.errors %} is-error{% endif %}">{% if field.name == 'username' %}<svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>{% endif %}{{ field }}</div>
+        {% if field.errors %}<div class="field-error">{{ field.errors|join:' ' }}</div>{% endif %}
+      </div>
+      {% endfor %}
+      <p class="panel-hint">Взяли из Telegram — можно поправить. Логин понадобится для входа на сайте.</p>
+    </div>
+    <div class="auth-actions">
+      <p class="auth-switch">Уже есть аккаунт? <a href="{% url 'telegram_link' %}">Войти по логину</a></p>
+      <button class="button primary" type="submit" data-tg-main>Создать аккаунт</button>
+    </div>
+  </form>
+</section>
+{% endblock %}

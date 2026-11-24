@@ -1,1 +1,90 @@
-{% extends 'base.html' %}{% block title %}{{ event.title }} · Наш офис{% endblock %}{% block content %}<section class="form-page"><a class="back-link" href="{% url 'home' %}?date={{ event.date|date:'Y-m-d' }}">← К расписанию</a><span class="eyebrow">МЕРОПРИЯТИЕ</span><h1 class="event-title">{{ event.title }}</h1><p class="intro">{{ event.date|date:'l, j E Y' }}</p><div class="card">{% if event.is_recurring %}<p class="series-label">↻ Еженедельная встреча</p>{% endif %}{% include "bookings/status.html" %}<div class="event-time-heading"><div class="detail-time">{{ event.start_time|time:'H:i' }} <span>—</span> {{ event.end_time|time:'H:i' }}</div>{% if can_edit %}<a class="edit-profile-button" href="{% url 'event_edit' event.pk %}" aria-label="Изменить мероприятие" title="Изменить мероприятие"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m13 6 5 5"/></svg></a>{% endif %}</div><div class="divider"></div><dl class="event-details"><dt>Помещения</dt><dd class="room-tags">{% for room in event.rooms.all %}<span class="badge">{{ room.name }}</span>{% endfor %}</dd>{% if event.details_visible %}<dt>Количество людей</dt><dd>{{ event.people_count }}</dd>{% endif %}<dt>Ответственный</dt>{% include "bookings/contact.html" with person=event.responsible %}{% if event.details_visible %}<dt>Добавил</dt>{% include "bookings/contact.html" with person=event.author %}{% endif %}</dl>{% if conflicts %}<div class="conflict-panel"><strong>⚠ Пересечение по помещениям</strong><p>В это время есть другие встречи в тех же помещениях.</p>{% for item in conflicts %}<a href="{% url 'event_detail' item.pk %}">{{ item.start_time|time:'H:i' }}–{{ item.end_time|time:'H:i' }} · {{ item.title }}</a>{% endfor %}</div>{% endif %}{% if event.hide_details and event.details_visible %}<p class="help">Детали скрыты от остальных пользователей.</p>{% endif %}{% if can_edit and event.status == 'cancelled' %}<div class="divider"></div><form class="event-actions" method="post" action="{% url 'event_status' event.pk 'restore' %}">{% csrf_token %}{% include "bookings/scope.html" with action="restore" %}<button class="button secondary" type="submit">Восстановить мероприятие</button></form>{% endif %}</div></section>{% endblock %}
+{% extends 'base.html' %}{% load static ui %}
+{% block title %}{{ event.title }} · Наш офис{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="detail-page">
+  <header class="page-nav">
+    <a class="icon-button" href="{% url 'home' %}?date={{ event.date|date:'Y-m-d' }}" aria-label="К расписанию"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-left"/></svg></a>
+    <h1>Встреча</h1>
+    {% if can_edit %}<a class="icon-button" href="{% url 'event_edit' event.pk %}" aria-label="Изменить мероприятие" title="Изменить мероприятие"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#pencil"/></svg></a>{% else %}<span aria-hidden="true"></span>{% endif %}
+  </header>
+
+  <div class="panel detail-head room-{{ event.color }}">
+    {% with first=event.rooms.0 %}{% if first %}<span class="detail-room"><i class="room-dot"></i>{{ first.name }}</span>{% endif %}{% endwith %}
+    <h2 class="detail-title">{% if not event.details_visible %}<svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg>{% endif %}<span>{{ event.title }}</span></h2>
+    {% if event.status == 'cancelled' or event.is_recurring or not event.details_visible or event.has_conflict or event.key_needed %}
+    <div class="detail-badges">
+      {% if event.status == 'cancelled' %}<span class="tag">× Отменено</span>{% endif %}
+      {% if event.is_recurring %}<span class="tag is-accent"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#repeat"/></svg>Каждую неделю</span>{% endif %}
+      {% if not event.details_visible %}<span class="tag"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg>Детали скрыты</span>{% endif %}
+      {% if event.has_conflict %}<span class="tag is-danger">⚠ Пересечение</span>{% endif %}
+      {% if event.key_needed and can_edit or event.key_needed and user.is_administrator %}<span class="tag{% if not event.key_handled %} is-accent{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#key"/></svg>{% if event.key_handled %}Ключ выдан{% else %}Нужен ключ{% endif %}</span>{% endif %}
+    </div>
+    {% endif %}
+  </div>
+
+  {% if event.key_needed and not event.key_handled and event.status != 'cancelled' %}
+    {% if user.is_administrator and event.author.pk != user.pk %}
+    <div class="panel key-panel">
+      <div class="key-head"><span class="key-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#key"/></svg></span><span><b>Нужен ключ</b><small>Кто просит: {{ event.author.last_name }} {{ event.author.first_name }}. Напишите, как и когда получить ключ.</small></span></div>
+      <div class="key-actions">
+        <a class="button secondary button-m" href="{% url 'message_thread' event.author.pk %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#message"/></svg>Написать</a>
+        <form method="post" action="{% url 'event_key_handled' event.pk %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"><button class="button primary button-m" type="submit"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg>Ключ выдан</button></form>
+      </div>
+    </div>
+    {% elif can_edit %}
+    <div class="panel key-panel">
+      <div class="key-head"><span class="key-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#key"/></svg></span><span><b>Запрос на ключ отправлен</b><small>Администраторы напишут вам в «Сообщения», как и когда получить ключ. Можно написать им и самим:</small></span></div>
+      {% for admin in administrators %}{% include 'bookings/_person.html' with person=admin role=admin.telegram_username|yesno:'Администратор · Telegram @,Администратор'|add:admin.telegram_username %}{% empty %}<p class="panel-hint">Администратор свяжется с вами.</p>{% endfor %}
+    </div>
+    {% endif %}
+  {% endif %}
+
+  {% if conflicts %}
+  <div class="inline-alert" role="note">
+    <svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>
+    <div><b>Пересечение по помещениям</b><p>В это время в тех же помещениях есть другие встречи:</p>{% for item in conflicts %}<a href="{% url 'event_detail' item.pk %}">{{ item.start_time|time:'H:i' }}–{{ item.end_time|time:'H:i' }} · {{ item.title }}</a>{% endfor %}</div>
+  </div>
+  {% endif %}
+
+  <div class="panel">
+    <h2>Дата и время</h2>
+    <div class="field-input is-static"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#calendar"/></svg><span>{{ event.date|date:'l, j E Y'|capfirst }}</span></div>
+    <div class="time-row">
+      <div class="field-input is-static"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg><span>{{ event.start_time|time:'H:i' }}</span></div>
+      <svg class="icon time-arrow" aria-hidden="true"><use href="{{ icons }}#arrow-right"/></svg>
+      <div class="field-input is-static"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg><span>{{ event.end_time|time:'H:i' }}</span></div>
+    </div>
+    {% if event.details_visible %}<p class="panel-hint">{{ minutes|duration_words }} · время по Белграду</p>{% endif %}
+    {% if series %}<div class="field-input is-static"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#repeat"/></svg><span>{{ series.every|capfirst }} до {{ series.until|date:'j E' }}</span></div>{% endif %}
+  </div>
+
+  <div class="panel">
+    <div class="panel-title"><h2>Помещения</h2>{% if event.details_visible %}<span>{{ event.people_count|ru_plural:"человек,человека,человек" }}</span>{% endif %}</div>
+    <div class="room-chips">{% for room in event.rooms %}<span class="room-chip is-static room-{{ room.color }}"><i class="room-dot"></i>{{ room.name }}</span>{% endfor %}</div>
+  </div>
+
+  <div class="panel">
+    {% if event.details_visible %}
+      <h2>Люди</h2>
+      {% include 'bookings/_person.html' with person=event.responsible role='Ответственный' %}
+      {% include 'bookings/_person.html' with person=event.author role='Добавил' %}
+    {% else %}
+      <h2>Ответственный</h2>
+      {% include 'bookings/_person.html' with person=event.responsible role='' %}
+    {% endif %}
+  </div>
+
+  {% if not event.details_visible %}<p class="detail-note"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg>Автор скрыл название и количество людей. Их видят только автор и администратор.</p>
+  {% elif event.hide_details %}<p class="detail-note"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#eye-off"/></svg>Детали скрыты от остальных: они видят «Занято», время и помещения.</p>{% endif %}
+
+  {% if can_edit and event.status == 'cancelled' %}
+  <form class="panel" method="post" action="{% url 'event_status' event.pk 'restore' %}">
+    {% csrf_token %}
+    <h2>Встреча отменена</h2>
+    {% include "bookings/scope.html" with action="restore" %}
+    <button class="button secondary" type="submit">Восстановить встречу</button>
+  </form>
+  {% endif %}
+</section>
+{% endblock %}

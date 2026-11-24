@@ -1,0 +1,7 @@
+{% load static %}<a class="agenda-item" href="{% url 'event_detail' event.pk %}">
+  <span class="agenda-times"><b>{{ event.start_time|time:'H:i' }}</b><span>{{ event.end_time|time:'H:i' }}</span></span>
+  <span class="agenda-card">
+    <span class="agenda-title"><span>{{ event.title }}</span><svg class="icon" aria-hidden="true"><use href="{% static 'icons.svg' %}#chevron-right"/></svg></span>
+    <span class="agenda-rooms"><i class="room-dot room-{{ event.color }}"></i>{% for room in event.rooms %}{{ room.name }}{% if not forloop.last %} · {% endif %}{% endfor %}</span>
+  </span>
+</a>

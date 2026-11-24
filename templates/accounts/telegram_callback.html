@@ -1,0 +1,22 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Вход через Telegram · Наш офис{% endblock %}
+{% block content %}
+<section class="tg-entry">
+  <img src="{% static 'favicon.svg' %}" alt="" width="64" height="64">
+  <p class="tg-entry-text" id="tg-callback-status">Входим через Telegram…</p>
+</section>
+<script>
+(() => {
+  const status = document.getElementById('tg-callback-status');
+  const match = location.hash.match(/tgAuthResult=([^&]+)/);
+  if (!match) { status.textContent = 'Вход отменён.'; setTimeout(() => location.replace('{% url "login" %}'), 1200); return; }
+  try {
+    const raw = match[1].replace(/-/g, '+').replace(/_/g, '/');
+    const data = JSON.parse(decodeURIComponent(escape(atob(raw + '='.repeat((4 - raw.length % 4) % 4)))));
+    location.replace('{% url "telegram_login" %}?' + new URLSearchParams(data).toString());
+  } catch (e) {
+    status.textContent = 'Не удалось войти через Telegram. Попробуйте ещё раз.';
+  }
+})();
+</script>
+{% endblock %}

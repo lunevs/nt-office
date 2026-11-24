@@ -1,0 +1,8 @@
+{% load static %}<div class="empty-card">
+  <div class="empty-state">
+    <span class="empty-icon"><svg class="icon" aria-hidden="true"><use href="{% static 'icons.svg' %}#calendar"/></svg></span>
+    <h2>Мероприятий не запланировано</h2>
+    <p>Все помещения свободны весь день — выберите время и забронируйте</p>
+    <a class="button primary button-m" href="{% url 'event_create' %}?date={{ day|date:'Y-m-d' }}">Забронировать</a>
+  </div>
+</div>

@@ -1,1 +1,30 @@
-{% extends 'base.html' %}{% block title %}Сообщения · Наш офис{% endblock %}{% block content %}<section><div class="calendar-heading"><h1>Сообщения</h1><a class="button primary calendar-add" href="{% url 'message_people' %}">Написать</a></div><div class="conversation-list">{% for chat in conversations %}<a class="card conversation" href="{% url 'message_thread' chat.person.pk %}"><div class="conversation-heading"><strong>{{ chat.person.last_name }} {{ chat.person.first_name }}</strong>{% if chat.unread %}<span class="unread-badge">{{ chat.unread }}<span class="visually-hidden"> непрочитанных</span></span>{% endif %}</div><p class="message-preview">{% if chat.last.sender_id == user.pk %}Вы: {% endif %}{{ chat.last.text|truncatechars:100 }}</p><time class="help">{{ chat.last.created_at|date:'j E, H:i' }}</time></a>{% empty %}<div class="card empty-state"><h2>Пока нет переписок</h2><p class="muted">Выберите участника, чтобы написать ему.</p></div>{% endfor %}</div></section>{% endblock %}
+{% extends 'base.html' %}{% load static %}
+{% block title %}Сообщения · Наш офис{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="messages-page">
+  <header class="page-header">
+    <h1>Сообщения</h1>
+    <a class="icon-button mobile-only" href="{% url 'message_people' %}" aria-label="Написать" title="Написать"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#pencil"/></svg></a>
+    <a class="button secondary button-m desktop-only-flex" href="{% url 'message_people' %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#pencil"/></svg>Написать</a>
+    <span class="desktop-only">{% include 'partials/admin_gear.html' %}</span>
+  </header>
+  <div class="conversations-pane">
+    {% if conversations %}
+      {% include 'messaging/_conversations.html' %}
+    {% else %}
+      <div class="empty-card">
+        <div class="empty-state">
+          <span class="empty-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#message"/></svg></span>
+          <h2>Пока нет переписок</h2>
+          <p>Напишите ответственному — конверт есть в карточке встречи. Или выберите человека из списка.</p>
+          <a class="button primary button-m" href="{% url 'message_people' %}">Написать</a>
+        </div>
+      </div>
+    {% endif %}
+  </div>
+  <div class="thread-placeholder" aria-hidden="true">
+    <span class="empty-icon"><svg class="icon"><use href="{{ icons }}#message"/></svg></span>
+    <p>Выберите переписку слева или напишите новую</p>
+  </div>
+</section>
+{% endblock %}

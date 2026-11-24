@@ -1,0 +1,9 @@
+{% load ui %}<div class="conversations">{% for chat in conversations %}
+  <a class="conversation-card{% if chat.unread %} is-unread{% endif %}{% if chat.person.pk == active_pk %} is-active{% endif %}" href="{% url 'message_thread' chat.person.pk %}"{% if chat.person.pk == active_pk %} aria-current="page"{% endif %}>
+    <span class="avatar small-avatar" aria-hidden="true">{{ chat.person.last_name|first }}{{ chat.person.first_name|first }}</span>
+    <span class="conv-text">
+      <span class="conv-row"><b>{{ chat.person.last_name }} {{ chat.person.first_name }}</b><time datetime="{{ chat.last.created_at|date:'c' }}">{{ chat.last.created_at|chat_time }}</time></span>
+      <span class="conv-row"><span class="conv-preview">{% if chat.last.sender_id == user.pk %}Вы: {% endif %}{{ chat.last.text|truncatechars:140 }}</span>{% if chat.unread %}<span class="conv-count">{{ chat.unread }}<span class="visually-hidden"> непрочитанных</span></span>{% endif %}</span>
+    </span>
+  </a>
+{% endfor %}</div>

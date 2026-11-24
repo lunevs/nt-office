@@ -4,6 +4,10 @@ from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
 
+# Цвет помещения в интерфейсе по его порядку: зал, Бэнкси, Билибин, Кубрик, кухня.
+ROOM_COLORS = ("hall", "banksy", "bilibin", "kubrik", "kitchen")
+
+
 class Room(models.Model):
     name = models.CharField("Название", max_length=80, unique=True)
     position = models.PositiveSmallIntegerField(default=0)
@@ -13,6 +17,10 @@ class Room(models.Model):
 
     def __str__(self):
         return self.name
+
+    @property
+    def color(self):
+        return ROOM_COLORS[self.position % len(ROOM_COLORS)]
 
 class EventSeries(models.Model):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
@@ -29,6 +37,8 @@ class Event(models.Model):
 
     status = models.CharField("Статус", max_length=12, choices=Status.choices, default=Status.ACTIVE, db_index=True)
     hide_details = models.BooleanField("Private (не публиковать детали)", default=False)
+    key_needed = models.BooleanField("Нужен ключ", default=False)
+    key_handled = models.BooleanField("Ключ выдан", default=False)
 
     title = models.CharField("Название", max_length=160)
     date = models.DateField("Дата", db_index=True)
@@ -55,9 +65,9 @@ class Event(models.Model):
     def clean(self):
         errors = {}
         if self.start_time and self.start_time < time(6):
-            errors["start_time"] = "Офис доступен с 06:00."
+            errors["start_time"] = "Офис открыт с 06:00 до 23:00 — встреча может начаться не раньше 06:00"
         if self.end_time and self.end_time > time(23):
-            errors["end_time"] = "Мероприятие должно закончиться до 23:00 включительно."
+            errors["end_time"] = "Офис открыт с 06:00 до 23:00 — встреча должна закончиться не позже 23:00"
         if self.start_time and self.end_time and self.end_time <= self.start_time:
             errors["end_time"] = "Окончание должно быть позже начала в тот же день."
         for field in ("start_time", "end_time"):
@@ -77,7 +87,9 @@ class Event(models.Model):
 
     def visible_to(self, user, has_conflict=False):
         visible = not self.hide_details or self.can_edit(user)
+        first_room = next(iter(self.rooms.all()), None)
         return {
+            "color": first_room.color if first_room else ROOM_COLORS[0],
             "pk": self.pk, "is_recurring": self.series_id is not None, "title": self.title if visible else "Занято",
             "date": self.date, "start_time": self.start_time, "end_time": self.end_time,
             "rooms": self.rooms.all(), "responsible": self.responsible,
@@ -86,4 +98,5 @@ class Event(models.Model):
             "status": self.status, "status_label": self.get_status_display(),
             "details_visible": visible, "hide_details": self.hide_details,
             "has_conflict": has_conflict,
+            "key_needed": self.key_needed, "key_handled": self.key_handled,
         }

@@ -1,6 +1,67 @@
-{% load static %}<!doctype html>
-<html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"><meta name="theme-color" content="#f7f8f4"><link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml"><title>{% block title %}Наш офис{% endblock %}</title><link rel="stylesheet" href="{% static 'app.css' %}"></head>
-<body><div class="app-shell"><header class="app-header"><a class="brand" href="{% url 'home' %}"><span class="brand-icon" aria-hidden="true">⌂</span> Наш офис</a><span class="header-note">New Territory</span></header>
-<main id="main">{% if messages %}<div class="notices" role="status">{% for message in messages %}<p class="notice">{{ message }}</p>{% endfor %}</div>{% endif %}{% block content %}{% endblock %}</main>
-{% if user.is_authenticated %}<nav class="bottom-nav" aria-label="Основная навигация"><a href="{% url 'home' %}" {% if request.resolver_match.url_name == 'home' or request.resolver_match.url_name == 'event_create' or request.resolver_match.url_name == 'event_detail' or request.resolver_match.url_name == 'event_edit' %}aria-current="page"{% endif %}><span aria-hidden="true">▦</span>Календарь</a><a href="{% url 'messages' %}" {% if request.resolver_match.url_name == 'messages' or request.resolver_match.url_name == 'message_thread' or request.resolver_match.url_name == 'message_people' %}aria-current="page"{% endif %}><span class="message-nav-icon" aria-hidden="true">✉</span>Сообщения <b class="unread-badge nav-unread" data-unread-count {% if not unread_message_count %}hidden{% endif %}>{{ unread_message_count }}</b></a><a href="{% url 'profile' %}" {% if request.resolver_match.url_name == 'profile' %}aria-current="page"{% endif %}><span aria-hidden="true">○</span>Профиль</a>{% if user.is_administrator %}<a href="{% url 'users' %}" {% if request.resolver_match.url_name == 'users' %}aria-current="page"{% endif %}><span aria-hidden="true">⚙</span>Управление</a>{% endif %}</nav>{% endif %}
-</div></body></html>
+{% load static %}{% static 'icons.svg' as icons %}<!doctype html>
+<html lang="ru" data-sw="{% url 'service_worker' %}"{% if user.is_authenticated and not user.must_change_password %} data-auth="in"{% endif %}>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f2f2f5" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#10131a" media="(prefers-color-scheme: dark)">
+<meta name="application-name" content="Наш офис">
+<meta name="apple-mobile-web-app-title" content="Наш офис">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="manifest" href="{% url 'manifest' %}">
+<link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
+<link rel="apple-touch-icon" href="{% static 'icons/apple-touch-icon.png' %}">
+<title>{% block title %}Наш офис{% endblock %}</title>
+<script>document.documentElement.classList.add("js");try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<link rel="stylesheet" href="{% static 'app.css' %}">
+{% if in_telegram %}<script src="https://telegram.org/js/telegram-web-app.js?57"></script>{% endif %}
+{% block head %}{% endblock %}
+</head>
+{% with page=request.resolver_match.url_name %}
+<body class="{% if user.is_authenticated and not user.must_change_password %}has-nav{% endif %}">
+<a class="skip-link" href="#main">К содержимому</a>
+<div class="app{% if user.is_authenticated and not user.must_change_password %} has-sidebar{% endif %}">
+{% if user.is_authenticated and not user.must_change_password %}
+<aside class="sidebar">
+  <a class="brand" href="{% url 'home' %}"><img src="{% static 'favicon.svg' %}" alt="" width="40" height="40"><span><b>Наш офис</b><small>New Territory</small></span></a>
+  <a class="button primary sidebar-book" href="{% url 'event_create' %}{% if day %}?date={{ day|date:'Y-m-d' }}{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#plus"/></svg>Забронировать</a>
+  <nav class="sidebar-nav" aria-label="Основная навигация">
+    <a href="{% url 'home' %}" {% if page == 'home' or page == 'event_create' or page == 'event_detail' or page == 'event_edit' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="{{ icons }}#calendar"/></svg>Календарь</a>
+    <a href="{% url 'messages' %}" {% if page == 'messages' or page == 'message_thread' or page == 'message_people' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="{{ icons }}#message"/></svg>Сообщения<b class="badge-count" data-unread-count {% if not unread_message_count %}hidden{% endif %}>{{ unread_message_count }}</b></a>
+    <a href="{% url 'profile' %}" {% if page == 'profile' or page == 'profile_edit' or page == 'password_change' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>Профиль</a>
+  </nav>
+</aside>
+{% endif %}
+<div class="app-main">
+  <main id="main">
+    {% if messages %}<div class="notices" role="status">{% for message in messages %}<p class="notice">{{ message }}</p>{% endfor %}</div>{% endif %}
+    {% block content %}{% endblock %}
+  </main>
+</div>
+{% block tabbar %}{% if user.is_authenticated and not user.must_change_password %}
+<nav class="tabbar" aria-label="Основная навигация">
+  <div class="tabbar-capsule">
+    <a href="{% url 'home' %}" {% if page == 'home' or page == 'event_create' or page == 'event_detail' or page == 'event_edit' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="{{ icons }}#calendar"/></svg>Календарь</a>
+    <a href="{% url 'messages' %}" {% if page == 'messages' or page == 'message_thread' or page == 'message_people' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="{{ icons }}#message"/></svg>Сообщения<b class="badge-count" data-unread-count {% if not unread_message_count %}hidden{% endif %}>{{ unread_message_count }}</b></a>
+    <a href="{% url 'profile' %}" {% if page == 'profile' or page == 'profile_edit' or page == 'password_change' %}aria-current="page"{% endif %}><svg class="icon" aria-hidden="true"><use href="{{ icons }}#user"/></svg>Профиль</a>
+  </div>
+  <a class="tabbar-add" href="{% url 'event_create' %}{% if day %}?date={{ day|date:'Y-m-d' }}{% endif %}" aria-label="Забронировать"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#plus"/></svg></a>
+</nav>
+{% endif %}{% endblock %}
+{% if user.is_authenticated and not user.must_change_password %}
+<div class="app-toasts" data-toasts data-health="{% url 'health' %}" data-home="{% url 'home' %}">
+  <div class="app-toast" data-toast="offline" role="status"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#wifi-off"/></svg><span>Нет сети · показываем сохранённое расписание</span></div>
+  <div class="app-toast has-action" data-toast="update" role="status"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#refresh"/></svg><span>Доступна новая версия</span><button class="app-toast-action" type="button" data-update-now>Обновить</button></div>
+</div>
+{% endif %}
+</div>
+{% if user.is_authenticated %}<script src="{% static 'event-form.js' %}" defer></script><script src="{% static 'app.js' %}" defer></script>{% endif %}
+<script src="{% static 'pwa.js' %}" defer></script>
+{% if in_telegram %}<script src="{% static 'telegram.js' %}" defer></script>{% endif %}
+{% block scripts %}{% endblock %}
+</body>
+{% endwith %}
+</html>

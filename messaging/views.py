@@ -8,6 +8,7 @@ from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 from .forms import MessageForm
 from .models import Message
+from accounts import telegram
 
 User = get_user_model()
 
@@ -26,25 +27,29 @@ def positive_id(value, default=0):
     except (TypeError, ValueError):
         return default
 
-@login_required
-@never_cache
-@require_GET
-def inbox(request):
-    sent = Message.objects.filter(sender=request.user).values('recipient').annotate(last_id=Max('id'))
-    received = Message.objects.filter(recipient=request.user).values('sender').annotate(last_id=Max('id'))
+def conversation_list(user):
+    """Переписки пользователя: последний обмен сверху, с числом непрочитанных."""
+    sent = Message.objects.filter(sender=user).values('recipient').annotate(last_id=Max('id'))
+    received = Message.objects.filter(recipient=user).values('sender').annotate(last_id=Max('id'))
     latest = {}
     for row in sent:
         latest[row['recipient']] = row['last_id']
     for row in received:
         latest[row['sender']] = max(latest.get(row['sender'], 0), row['last_id'])
-    unread = dict(Message.objects.filter(recipient=request.user, read_at__isnull=True).values('sender').annotate(total=Count('pk')).values_list('sender', 'total'))
+    unread = dict(Message.objects.filter(recipient=user, read_at__isnull=True).values('sender').annotate(total=Count('pk')).values_list('sender', 'total'))
     messages = Message.objects.filter(pk__in=latest.values()).select_related('sender', 'recipient').order_by('-pk')
     conversations = []
     for message in messages:
-        person = message.recipient if message.sender_id == request.user.pk else message.sender
+        person = message.recipient if message.sender_id == user.pk else message.sender
         if person.is_active:
             conversations.append({'person': person, 'last': message, 'unread': unread.get(person.pk, 0)})
-    return render(request, 'messaging/inbox.html', {'conversations': conversations})
+    return conversations
+
+@login_required
+@never_cache
+@require_GET
+def inbox(request):
+    return render(request, 'messaging/inbox.html', {'conversations': conversation_list(request.user)})
 
 @login_required
 @never_cache
@@ -56,7 +61,8 @@ def people(request):
         users = users.filter(Q(first_name__icontains=query) | Q(last_name__icontains=query) | Q(username__icontains=query))
     from django.core.paginator import Paginator
     page = Paginator(users.order_by('last_name', 'first_name', 'username'), 30).get_page(request.GET.get('page'))
-    return render(request, 'messaging/people.html', {'people': page, 'query': query})
+    recent = [] if query or page.number > 1 else [chat['person'] for chat in conversation_list(request.user)[:3]]
+    return render(request, 'messaging/people.html', {'people': page, 'query': query, 'recent': recent})
 
 @login_required
 @never_cache
@@ -65,7 +71,8 @@ def thread(request, pk):
     person = participant(request, pk)
     form = MessageForm(request.POST if request.method == 'POST' else None)
     if request.method == 'POST' and form.is_valid():
-        Message.objects.create(sender=request.user, recipient=person, text=form.cleaned_data['text'])
+        message = Message.objects.create(sender=request.user, recipient=person, text=form.cleaned_data['text'])
+        telegram.notify_message(message)
         return redirect('message_thread', pk=person.pk)
     before = positive_id(request.GET.get('before'))
     queryset = pair_messages(request.user, person)
@@ -74,7 +81,7 @@ def thread(request, pk):
     recent = list(queryset.order_by('-pk')[:51])
     has_older = len(recent) > 50
     items = list(reversed(recent[:50]))
-    return render(request, 'messaging/thread.html', {'person': person, 'form': form, 'items': items, 'has_older': has_older, 'older_cursor': items[0].pk if items else 0, 'cursor': items[-1].pk if items else 0, 'history': bool(before)})
+    return render(request, 'messaging/thread.html', {'person': person, 'form': form, 'items': items, 'has_older': has_older, 'older_cursor': items[0].pk if items else 0, 'cursor': items[-1].pk if items else 0, 'history': bool(before), 'conversations': conversation_list(request.user)})
 
 @login_required
 @never_cache
@@ -83,7 +90,7 @@ def updates(request, pk):
     person = participant(request, pk)
     after = positive_id(request.GET.get('after'))
     items = pair_messages(request.user, person).filter(pk__gt=after).order_by('pk')[:100]
-    return JsonResponse({'messages': [{'id': item.pk, 'text': item.text, 'own': item.sender_id == request.user.pk, 'time': timezone.localtime(item.created_at).strftime('%d.%m.%Y %H:%M')} for item in items]})
+    return JsonResponse({'messages': [{'id': item.pk, 'text': item.text, 'own': item.sender_id == request.user.pk, 'time': timezone.localtime(item.created_at).strftime('%H:%M')} for item in items]})
 
 @login_required
 @never_cache

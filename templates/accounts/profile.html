@@ -1,1 +1,71 @@
-{% extends 'base.html' %}{% block content %}<section><h1>Мой профиль</h1><div class="card"><div class="profile-field"><div><span class="profile-field-label">Имя пользователя:</span><strong>{{ user.last_name }} {{ user.first_name }}</strong></div><a class="edit-profile-button" href="{% url 'profile_edit' 'name' %}" aria-label="Изменить имя пользователя"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m13 6 5 5"/></svg></a></div><div class="profile-field"><div><span class="profile-field-label">Логин:</span><strong>{{ user.username }}</strong></div><a class="edit-profile-button" href="{% url 'profile_edit' 'login' %}" aria-label="Изменить логин"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m16 3 5 5-12 12-6 1 1-6Z"/><path d="m13 6 5 5"/></svg></a></div><div class="divider"></div><a class="button secondary" href="{% url 'password_change' %}">Изменить пароль <span aria-hidden="true">→</span></a></div><div class="section-heading"><h2>Мои ближайшие встречи</h2></div><div class="upcoming-meetings">{% for event in upcoming_events %}<a class="card upcoming-meeting" href="{% url 'event_detail' event.pk %}"><span class="eyebrow">{{ event.date|date:'j E' }} · {{ event.start_time|time:'H:i' }}–{{ event.end_time|time:'H:i' }}</span><h3>{{ event.title }}</h3>{% include "bookings/status.html" %}<p class="muted">{% for room in event.rooms.all %}{{ room.name }}{% if not forloop.last %} · {% endif %}{% endfor %}</p><span class="meeting-arrow" aria-hidden="true">↗</span></a>{% empty %}<p class="muted">У вас пока нет ближайших встреч.</p>{% endfor %}</div><a class="button secondary cancelled-management-button" href="{% url 'events_cancelled' %}?mine=1">Мои отменённые мероприятия <span aria-hidden="true">→</span></a><form method="post" action="{% url 'logout' %}" class="logout-form">{% csrf_token %}<button class="button cancel-button" type="submit">Выйти из аккаунта</button></form></section>{% endblock %}
+{% extends 'base.html' %}{% load static ui %}
+{% block title %}Мой профиль · Наш офис{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="profile-page">
+  <header class="page-header"><h1>Мой профиль</h1><span class="desktop-only">{% include 'partials/admin_gear.html' %}</span></header>
+
+  <div class="panel identity">
+    <div class="identity-row"><span><small>Имя</small><b>{{ user.last_name }} {{ user.first_name }}</b></span><a class="icon-button is-muted" href="{% url 'profile_edit' 'name' %}" data-sheet aria-label="Изменить имя"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#pencil"/></svg></a></div>
+    <div class="identity-row"><span><small>Логин</small><b>@{{ user.username }}</b></span><a class="icon-button is-muted" href="{% url 'profile_edit' 'login' %}" data-sheet aria-label="Изменить логин"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#pencil"/></svg></a></div>
+  </div>
+
+  {% if not user.is_verified %}
+  <div class="panel account-status">
+    <div class="key-head"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#lock"/></svg></span><span><b>Аккаунт не подтверждён</b><small>Одна встреча в день, до 2 часов, без повтора. После подтверждения ограничений не будет.</small></span></div>
+    {% if user.verification_requested_at %}<span class="verify-sent"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg>Запрос отправлен — администратор подтвердит аккаунт</span>
+    {% else %}<form method="post" action="{% url 'request_verification' %}">{% csrf_token %}<button class="button secondary button-m" type="submit" data-verify-request><svg class="icon" aria-hidden="true"><use href="{{ icons }}#check"/></svg>Запросить подтверждение</button></form>{% endif %}
+  </div>
+  {% endif %}
+
+  <div class="list-card">
+    <a class="list-row" href="{% url 'password_change' %}"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#key"/></svg></span><span class="list-title">Изменить пароль</span><svg class="icon list-chevron" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>
+  </div>
+
+  {% if telegram_enabled %}
+  <h2 class="section-title">Telegram</h2>
+  <div class="list-card">
+    {% if user.telegram_id %}
+    <div class="list-row"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg></span><span class="list-title">Привязан<small class="list-sub">{% if user.telegram_username %}@{{ user.telegram_username }} · {% endif %}вход без пароля</small></span>
+      <form method="post" action="{% url 'telegram_unlink' %}">{% csrf_token %}<button class="button ghost button-m" type="submit">Отвязать</button></form></div>
+    {% elif telegram_oauth_url %}
+    <a class="list-row" href="{{ telegram_oauth_url }}"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg></span><span class="list-title">Привязать Telegram<small class="list-sub">Вход без пароля и уведомления от бота</small></span><svg class="icon list-chevron" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>
+    {% endif %}
+  </div>
+  {% if user.telegram_id %}
+  <h2 class="section-title">Уведомления от бота</h2>
+  <form class="list-card notify-form" method="post" action="{% url 'profile_notifications' %}" data-autosave>
+    {% csrf_token %}
+    <label class="switch-row list-switch"><span><b>Новые сообщения</b><small>Кто написал и начало сообщения</small></span><input type="checkbox" name="notify_messages"{% if user.notify_messages %} checked{% endif %}><span class="switch" aria-hidden="true"></span></label>
+    <label class="switch-row list-switch"><span><b>Мои встречи</b><small>Если встречу, где вы ответственный, изменили или отменили</small></span><input type="checkbox" name="notify_events"{% if user.notify_events %} checked{% endif %}><span class="switch" aria-hidden="true"></span></label>
+    {% if user.is_administrator %}<label class="switch-row list-switch"><span><b>Заявки на доступ</b><small>Только у администратора</small></span><input type="checkbox" name="notify_requests"{% if user.notify_requests %} checked{% endif %}><span class="switch" aria-hidden="true"></span></label>{% endif %}
+    <noscript><button class="button secondary button-m" type="submit">Сохранить</button></noscript>
+  </form>
+  {% endif %}
+  {% endif %}
+
+  <h2 class="section-title">Мои ближайшие встречи</h2>
+  {% if upcoming_events %}
+  <div class="agenda">{% for event in upcoming_events %}
+    <a class="agenda-item" href="{% url 'event_detail' event.pk %}">
+      <span class="agenda-times is-date"><b>{{ event.date|date:'j' }}</b><span>{{ event.date|month_short }}</span></span>
+      <span class="agenda-card">
+        <span class="agenda-title"><span>{{ event.title }}</span><svg class="icon" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></span>
+        <span class="agenda-rooms"><i class="room-dot room-{{ event.color }}"></i>{{ event.start_time|time:'H:i' }}–{{ event.end_time|time:'H:i' }} · {% for room in event.rooms %}{{ room.name }}{% if not forloop.last %}, {% endif %}{% endfor %}</span>
+      </span>
+    </a>{% endfor %}
+  </div>
+  {% else %}
+  <p class="muted profile-empty">У вас пока нет ближайших встреч.</p>
+  {% endif %}
+
+  <div class="list-card">
+    <a class="list-row" href="{% url 'events_cancelled' %}?mine=1"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#x"/></svg></span><span class="list-title">Мои отменённые</span>{% if cancelled_count %}<span class="list-value">{{ cancelled_count }}</span>{% endif %}<svg class="icon list-chevron" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>
+    <label class="list-row"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#moon"/></svg></span><span class="list-title">Тема</span><select class="list-select" data-theme-select aria-label="Тема оформления"><option value="">Как в системе</option><option value="light">Светлая</option><option value="dark">Тёмная</option></select><svg class="icon list-chevron" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></label>
+    <button class="list-row" type="button" data-install hidden><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#smartphone"/></svg></span><span class="list-title">На экране «Домой»</span><span class="list-value" data-install-status>Установить</span><svg class="icon list-chevron" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></button>
+  </div>
+
+  <form method="post" action="{% url 'logout' %}" class="list-card logout-form">{% csrf_token %}
+    <button class="list-row is-danger" type="submit"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#logout"/></svg></span><span class="list-title">Выйти из аккаунта</span></button>
+  </form>
+</section>
+{% endblock %}

@@ -1,0 +1,5 @@
+{% load static %}<a class="people-row" href="{% url 'message_thread' person.pk %}">
+  <span class="avatar small-avatar" aria-hidden="true">{{ person.last_name|first }}{{ person.first_name|first }}</span>
+  <span class="people-text"><b>{{ person.last_name }} {{ person.first_name }}</b><small>@{{ person.username }}</small></span>
+  <svg class="icon" aria-hidden="true"><use href="{% static 'icons.svg' %}#chevron-right"/></svg>
+</a>

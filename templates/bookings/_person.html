@@ -1,0 +1,5 @@
+{% load static %}<div class="person-row">
+  <span class="avatar small-avatar" aria-hidden="true">{{ person.last_name|first }}{{ person.first_name|first }}</span>
+  <span class="person-text"><small>{% if role %}{{ role }}{% else %}@{{ person.username }}{% endif %}</small><b>{{ person.last_name }} {{ person.first_name }}</b></span>
+  {% if person.pk != user.pk and person.is_active %}<a class="person-mail" href="{% url 'message_thread' person.pk %}" aria-label="Написать: {{ person.last_name }} {{ person.first_name }}" title="Написать сообщение"><svg class="icon" aria-hidden="true"><use href="{% static 'icons.svg' %}#mail"/></svg></a>{% endif %}
+</div>
