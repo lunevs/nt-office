@@ -3,6 +3,7 @@
 Бот пишет только тем, кто привязал Telegram и не отключил нужный тип уведомлений в профиле.
 Отправка идёт после фиксации транзакции в отдельном потоке и не задерживает ответ пользователю.
 """
+import functools
 import hashlib
 import hmac
 import json
@@ -89,6 +90,15 @@ def oauth_url(request):
     origin = f"{request.scheme}://{request.get_host()}"
     query = urlencode({"bot_id": settings.TELEGRAM_BOT_TOKEN.split(":")[0], "origin": origin, "request_access": "write", "return_to": origin + reverse("telegram_callback")})
     return f"https://oauth.telegram.org/auth?{query}"
+
+
+@functools.lru_cache(maxsize=1)
+def _username_from_api():
+    return ((call("getMe", {}) or {}).get("result") or {}).get("username", "")
+
+
+def bot_username():
+    return settings.TELEGRAM_BOT_USERNAME or _username_from_api()
 
 
 def app_url(path):

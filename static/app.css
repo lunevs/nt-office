@@ -1497,3 +1497,15 @@ body:has(.composer) .app-toasts { bottom: calc(84px + env(safe-area-inset-bottom
   .app-toasts, body:not(:has(.tabbar)) .app-toasts, body:has(.composer) .app-toasts { bottom: 24px; }
   .has-nav .app-toasts { padding-left: calc(var(--sidebar-width) + 24px); }
 }
+
+/* Вход через бота из установленного приложения — макет PWA 22 */
+.bot-login-head { display: flex; flex-direction: column; align-items: center; gap: 12px; margin-top: clamp(24px, 12vh, 108px); text-align: center; }
+.bot-login-icon { width: 88px; height: 88px; margin-bottom: 20px; }
+.bot-login-icon .icon { width: 40px; height: 40px; }
+.bot-login-head h1 { margin: 0; font-size: 28px; line-height: 32px; font-weight: 600; letter-spacing: -.6px; }
+.bot-login-head p { margin: 0; font-size: 15px; line-height: 20px; letter-spacing: -.15px; color: var(--text-secondary); }
+.bot-login-card { margin-top: 20px; }
+.bot-login-card .list-row + .list-row::before { left: 0; }
+.bot-login-card .list-title { color: var(--text-secondary); font-size: 15px; }
+.bot-login-value { font-size: 15px; line-height: 20px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; }
+.bot-login-state::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }

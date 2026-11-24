@@ -291,3 +291,73 @@ class MorningDigestTests(TestCase):
         call.reset_mock()
         self.hook({"message": {"text": "/today", "chat": {"id": -100, "type": "group"}}})
         call.assert_not_called()
+
+
+@override_settings(TELEGRAM_BOT_TOKEN=TOKEN, TELEGRAM_BOT_USERNAME="office_bot", SITE_URL="https://office.example", TELEGRAM_WEBHOOK_SECRET="hook-secret", STORAGES=STATIC)
+class BotLoginTests(TestCase):
+    """Вход через бота из установленного приложения (макет PWA 22)."""
+
+    def setUp(self):
+        self.member = User.objects.create_user("member", password=PASSWORD, first_name="Анна", telegram_id=555)
+        self.tg = {"id": 555, "first_name": "Анна", "username": "anna"}
+
+    def hook(self, update):
+        return self.client.post(reverse("telegram_webhook"), json.dumps(update), content_type="application/json", HTTP_X_TELEGRAM_BOT_API_SECRET_TOKEN="hook-secret")
+
+    def start(self):
+        page = self.client.get(reverse("telegram_bot_login"))
+        token = self.client.session["telegram_bot_login"]
+        self.assertContains(page, f"https://t.me/office_bot?start=login_{token}")
+        self.assertContains(page, "Подтвердите вход")
+        return token
+
+    def status(self):
+        return self.client.get(reverse("telegram_bot_login_status")).json()
+
+    @patch("accounts.telegram.call", return_value={"ok": True})
+    def test_linked_user_signs_in_after_confirming_in_bot(self, call):
+        token = self.start()
+        self.assertEqual(self.status(), {"state": "waiting"})
+        self.hook({"message": {"text": f"/start login_{token}", "chat": {"id": 555, "type": "private"}, "from": self.tg}})
+        ask = call.call_args.args[1]
+        self.assertEqual(ask["reply_markup"]["inline_keyboard"][0][0], {"text": "Войти", "callback_data": f"login:{token}"})
+        self.assertEqual(self.status(), {"state": "waiting"})  # одного «Старт» мало — нужно «Войти»
+        self.hook({"callback_query": {"id": "q", "from": self.tg, "data": f"login:{token}", "message": {"chat": {"id": 555}, "message_id": 7}}})
+        self.assertEqual(self.status(), {"state": "done", "redirect": reverse("home")})
+        self.assertEqual(self.client.session["_auth_user_id"], str(self.member.pk))
+        self.assertEqual(self.status(), {"state": "expired"})  # одноразово
+
+    @patch("accounts.telegram.call", return_value={"ok": True})
+    def test_unknown_telegram_goes_to_account_creation(self, call):
+        token = self.start()
+        stranger = {"id": 777, "first_name": "Пётр", "username": "petr"}
+        self.hook({"callback_query": {"id": "q", "from": stranger, "data": f"login:{token}", "message": {"chat": {"id": 777}, "message_id": 8}}})
+        self.assertEqual(self.status()["redirect"], reverse("telegram_join"))
+        self.assertContains(self.client.get(reverse("telegram_join")), "Здравствуйте, Пётр!")
+
+    @patch("accounts.telegram.call", return_value={"ok": True})
+    def test_signed_in_user_links_telegram(self, call):
+        other = User.objects.create_user("other", password=PASSWORD)
+        self.client.force_login(other)
+        token = self.start()
+        self.hook({"callback_query": {"id": "q", "from": {"id": 888, "first_name": "О"}, "data": f"login:{token}", "message": {"chat": {"id": 888}, "message_id": 9}}})
+        self.assertEqual(self.status()["redirect"], reverse("profile"))
+        other.refresh_from_db()
+        self.assertEqual(other.telegram_id, 888)
+
+    @patch("accounts.telegram.call", return_value={"ok": True})
+    def test_expired_and_unknown_links(self, call):
+        from accounts.models import TelegramLoginRequest
+        from django.utils import timezone as tz
+        from datetime import timedelta
+        token = self.start()
+        TelegramLoginRequest.objects.update(created_at=tz.now() - timedelta(minutes=11))
+        self.assertEqual(self.status(), {"state": "expired"})
+        self.hook({"message": {"text": f"/start login_{token}", "chat": {"id": 555, "type": "private"}, "from": self.tg}})
+        self.assertIn("устарела", call.call_args.args[1]["text"])
+        self.hook({"callback_query": {"id": "q", "from": self.tg, "data": "login:forged", "message": {"chat": {"id": 555}, "message_id": 7}}})
+        self.assertNotIn("_auth_user_id", self.client.session)
+
+    def test_telegram_buttons_switch_to_bot_login_in_installed_app(self):
+        page = self.client.get(reverse("login"))
+        self.assertContains(page, f'data-bot-login="{reverse("telegram_bot_login")}"')

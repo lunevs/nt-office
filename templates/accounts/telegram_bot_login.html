@@ -1,0 +1,21 @@
+{% extends 'base.html' %}{% load static %}
+{% block title %}Вход через Telegram · Наш офис{% endblock %}
+{% block tabbar %}{% endblock %}
+{% block content %}{% static 'icons.svg' as icons %}
+<section class="password-page bot-login" data-bot-login-page data-status="{% url 'telegram_bot_login_status' %}">
+  <div class="bot-login-head">
+    <span class="empty-icon bot-login-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg></span>
+    <h1>Подтвердите вход<br>в Telegram</h1>
+    <p data-hint>В чате с ботом нажмите «Старт», затем «Войти» — и возвращайтесь сюда, вход выполнится сам.</p>
+  </div>
+  <div class="list-card bot-login-card">
+    <div class="list-row"><span class="list-title">Бот</span><b class="bot-login-value">@{{ bot_username }}</b></div>
+    <div class="list-row"><span class="list-title">Статус</span><span class="tag is-accent bot-login-state" role="status" data-state>Ждём подтверждения</span></div>
+  </div>
+  <div class="auth-actions">
+    <a class="button primary" href="{{ bot_url }}" data-open-bot><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg>Открыть Telegram</a>
+    <a class="button ghost button-m" href="{{ cancel_url }}">Отмена</a>
+  </div>
+</section>
+<script src="{% static 'telegram-login.js' %}" defer></script>
+{% endblock %}

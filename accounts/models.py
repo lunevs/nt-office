@@ -65,3 +65,11 @@ class DailyDigest(models.Model):
     class Meta:
         verbose_name = "утренняя сводка"
         verbose_name_plural = "утренние сводки"
+
+
+class TelegramLoginRequest(models.Model):
+    """Вход через бота из установленного приложения (макет PWA 22): приложение ждёт, пока человек подтвердит вход в Telegram."""
+    token_hash = models.CharField(max_length=64, unique=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    telegram = models.JSONField(null=True, blank=True)
+    confirmed_at = models.DateTimeField(null=True, blank=True)

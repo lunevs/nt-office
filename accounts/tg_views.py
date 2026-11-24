@@ -1,5 +1,8 @@
 """Вход через Telegram, мини-приложение, привязка, запрос подтверждения и вебхук бота (макеты 09, T1, T2, T6, T7, 37)."""
+import hashlib
 import json
+import secrets
+from datetime import timedelta
 
 from django.conf import settings
 from django.contrib import messages
@@ -11,12 +14,14 @@ from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.utils.crypto import constant_time_compare
+from django.views.decorators.cache import never_cache
 from django.views.decorators.csrf import csrf_exempt
 from django.views.decorators.debug import sensitive_post_parameters
 from django.views.decorators.http import require_GET, require_POST, require_http_methods
 
 from . import access, digest, telegram
 from .forms import LoginForm, TelegramJoinForm
+from .models import TelegramLoginRequest
 
 User = get_user_model()
 SESSION_PROFILE = "telegram_profile"
@@ -172,7 +177,10 @@ def webhook(request):
     command = (message.get("text", "").split() or [""])[0]
     if chat.get("type") != "private":
         command = ""  # бот работает только в личных чатах
-    if command == "/start":
+    words = message.get("text", "").split()
+    if command == "/start" and len(words) > 1 and words[1].startswith("login_"):
+        _ask_bot_login(chat["id"], words[1][len("login_"):])
+    elif command == "/start":
         payload = {"chat_id": chat["id"], "text": "Здравствуйте! Это бот офиса New Territory: календарь помещений, бронирование и сообщения. Откройте приложение кнопкой ниже."}
         url = telegram.app_url("/tg/")
         if url:
@@ -187,6 +195,9 @@ def webhook(request):
 
 
 def _handle_callback(callback):
+    action, _, value = (callback.get("data") or "").partition(":")
+    if action == "login":
+        return _confirm_bot_login(callback, value)
     admin = User.objects.filter(telegram_id=(callback.get("from") or {}).get("id"), is_superuser=True, is_active=True).first()
     action, _, pk = (callback.get("data") or "").partition(":")
     answer = "Нет доступа"
@@ -214,3 +225,77 @@ def request_verification(request):
     from django.utils.http import url_has_allowed_host_and_scheme
     target = request.POST.get("next", "")
     return redirect(target if url_has_allowed_host_and_scheme(target, {request.get_host()}, request.is_secure()) else "profile")
+
+
+# --- Вход через бота из установленного приложения (макет PWA 22) ----------------
+# Из PWA переход на oauth.telegram.org открывается во встроенном браузере, и вход остаётся там.
+# Поэтому приложение показывает ссылку на бота и ждёт, пока человек подтвердит вход в Telegram.
+
+BOT_LOGIN_SESSION = "telegram_bot_login"
+BOT_LOGIN_TTL = timedelta(minutes=10)
+
+
+def _token_hash(token):
+    return hashlib.sha256(token.encode()).hexdigest()
+
+
+@never_cache
+@require_GET
+def bot_login(request):
+    if not telegram.enabled():
+        return redirect("login")
+    TelegramLoginRequest.objects.filter(created_at__lt=timezone.now() - BOT_LOGIN_TTL).delete()
+    token = secrets.token_urlsafe(24)
+    TelegramLoginRequest.objects.create(token_hash=_token_hash(token))
+    request.session[BOT_LOGIN_SESSION] = token
+    username = telegram.bot_username()
+    return render(request, "accounts/telegram_bot_login.html", {
+        "bot_username": username,
+        "bot_url": f"https://t.me/{username}?start=login_{token}",
+        "cancel_url": reverse("profile") if request.user.is_authenticated else reverse("login"),
+    })
+
+
+@never_cache
+@require_GET
+def bot_login_status(request):
+    token = request.session.get(BOT_LOGIN_SESSION)
+    attempt = TelegramLoginRequest.objects.filter(token_hash=_token_hash(token), created_at__gte=timezone.now() - BOT_LOGIN_TTL).first() if token else None
+    if not attempt:
+        return JsonResponse({"state": "expired"})
+    if not attempt.confirmed_at:
+        return JsonResponse({"state": "waiting"})
+    tg = attempt.telegram
+    attempt.delete()
+    request.session.pop(BOT_LOGIN_SESSION, None)
+    if request.user.is_authenticated:
+        return JsonResponse({"state": "done", "redirect": _link_current(request, tg).url})
+    return JsonResponse({"state": "done", "redirect": _route(request, tg, in_telegram=False)})
+
+
+def _ask_bot_login(chat_id, token):
+    """«/start login_…»: спрашиваем подтверждение, чтобы чужая ссылка не открыла вход в аккаунт."""
+    attempt = TelegramLoginRequest.objects.filter(token_hash=_token_hash(token), confirmed_at__isnull=True, created_at__gte=timezone.now() - BOT_LOGIN_TTL).first()
+    if not attempt:
+        telegram.call("sendMessage", {"chat_id": chat_id, "text": "Ссылка для входа устарела. Нажмите «Войти через Telegram» в приложении ещё раз."})
+        return
+    telegram.call("sendMessage", {
+        "chat_id": chat_id, "parse_mode": "HTML",
+        "text": "<b>Войти в «Наш офис»?</b>\nВы нажали «Войти через Telegram» в приложении. Если это были не вы — ничего не нажимайте.",
+        "reply_markup": {"inline_keyboard": [[{"text": "Войти", "callback_data": f"login:{token}"}]]},
+    })
+
+
+def _confirm_bot_login(callback, token):
+    attempt = TelegramLoginRequest.objects.filter(token_hash=_token_hash(token), confirmed_at__isnull=True, created_at__gte=timezone.now() - BOT_LOGIN_TTL).first()
+    source = callback.get("message") or {}
+    if not attempt:
+        text, answer = "Ссылка для входа устарела. Нажмите «Войти через Telegram» в приложении ещё раз.", "Ссылка устарела"
+    else:
+        attempt.telegram = callback.get("from") or {}
+        attempt.confirmed_at = timezone.now()
+        attempt.save(update_fields=["telegram", "confirmed_at"])
+        text, answer = "✓ Вход подтверждён — вернитесь в приложение «Наш офис».", "Вход подтверждён"
+    if source.get("chat"):
+        telegram.call("editMessageText", {"chat_id": source["chat"]["id"], "message_id": source["message_id"], "text": text})
+    telegram.call("answerCallbackQuery", {"callback_query_id": callback.get("id"), "text": answer})

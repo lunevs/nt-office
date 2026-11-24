@@ -8,7 +8,7 @@
     <p>Бронировать можно сразу после регистрации</p>
   </div>
   {% if telegram_oauth_url %}
-  <a class="button telegram-button" href="{{ telegram_oauth_url }}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg>Продолжить с Telegram</a>
+  <a class="button telegram-button" href="{{ telegram_oauth_url }}" data-bot-login="{% url 'telegram_bot_login' %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg>Продолжить с Telegram</a>
   <div class="or-divider"><span>или заполните вручную</span></div>
   {% endif %}
   <form method="post" class="auth-form" novalidate>

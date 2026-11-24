@@ -7,6 +7,11 @@
   const toasts = { offline: document.querySelector('[data-toast=offline]'), update: document.querySelector('[data-toast=update]') };
   const bookLinks = document.querySelectorAll('.tabbar-add, .sidebar-book');
   const health = host?.dataset.health;
+
+  // В установленном приложении вход через сайт Telegram завершается во встроенном браузере,
+  // поэтому кнопки «Войти через Telegram» ведут на вход через бота (макет PWA 22).
+  const standalone = window.matchMedia('(display-mode: standalone)').matches || navigator.standalone === true;
+  if (standalone) document.querySelectorAll('[data-bot-login]').forEach((link) => { link.href = link.dataset.botLogin; });
   let offline = false;
   let waiting = null;
   let timer = null;

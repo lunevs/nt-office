@@ -28,7 +28,7 @@
     <div class="list-row"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg></span><span class="list-title">Привязан<small class="list-sub">{% if user.telegram_username %}@{{ user.telegram_username }} · {% endif %}вход без пароля</small></span>
       <form method="post" action="{% url 'telegram_unlink' %}">{% csrf_token %}<button class="button ghost button-m" type="submit">Отвязать</button></form></div>
     {% elif telegram_oauth_url %}
-    <a class="list-row" href="{{ telegram_oauth_url }}"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg></span><span class="list-title">Привязать Telegram<small class="list-sub">Вход без пароля и уведомления от бота</small></span><svg class="icon list-chevron" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>
+    <a class="list-row" href="{{ telegram_oauth_url }}" data-bot-login="{% url 'telegram_bot_login' %}"><span class="list-icon"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#send"/></svg></span><span class="list-title">Привязать Telegram<small class="list-sub">Вход без пароля и уведомления от бота</small></span><svg class="icon list-chevron" aria-hidden="true"><use href="{{ icons }}#chevron-right"/></svg></a>
     {% endif %}
   </div>
   {% if user.telegram_id %}
