@@ -245,10 +245,13 @@
       : ['.day-panel > *'];
     if (isDay(fresh) && !sameWeek) parts.push('.week-strip');
     if (!isDay(fresh) && !sameMonth) parts.push('.cal-title h1', '.month-card > table');
-    fresh.querySelectorAll(parts.join(', ')).forEach((el) => el.animate(
+    // Пока содержимое сдвинуто на 24 px, оно не должно вылезать за край — иначе мигают полосы прокрутки.
+    fresh.classList.add('is-sliding');
+    const slides = [...fresh.querySelectorAll(parts.join(', '))].map((el) => el.animate(
       [{ opacity: 0, transform: `translateX(${offset}px)` }, { opacity: 1, transform: 'none' }],
       { duration, easing, fill: 'backwards' },
-    ));
+    ).finished.catch(() => {}));
+    Promise.all(slides).then(() => fresh.classList.remove('is-sliding'));
     const pill = sameWeek && fresh.querySelector('.week-day.is-selected .week-day-num');
     const pillTo = pill && pill.getBoundingClientRect();
     if (pill && pillFrom && pillFrom.width && pillTo.width && pillFrom.left !== pillTo.left) {

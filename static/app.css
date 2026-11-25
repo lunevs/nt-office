@@ -886,6 +886,8 @@ body:has(.event-editor-page) main { padding-top: 8px; }
 
 /* Форма встречи — макеты 04, 16, 22, 33; на компьютере — окно 25 */
 body:not(:has(.tabbar)) main { padding-bottom: 0; }
+/* «День»: шкала сама доходит до низа окна и держит место под панелью вкладок — страница не прокручивается. */
+body.has-nav:has(.calendar-page.is-day) main { padding-bottom: 0; }
 .sheet-page { display: flex; flex-direction: column; gap: 12px; }
 .sheet-grabber { align-self: center; width: 36px; height: 5px; margin-top: -4px; border-radius: 3px; background: var(--text-tertiary); opacity: .6; }
 .sheet-nav { display: grid; grid-template-columns: 40px 1fr 40px; align-items: center; gap: 8px; min-height: 48px; }
@@ -1150,6 +1152,8 @@ fieldset.panel > .field-error { margin-top: 12px; }
 
 /* Листание дня (стиль «Движение/Листание дня»): шапка и полоса недели стоят, дата, «Сейчас» и шкала
    въезжают на 24 px с той стороны, куда листаем, и проявляются; выбранный день в полосе переезжает. */
+/* Листание без перезагрузки (app.js): сдвинутое содержимое не даёт горизонтальной прокрутки. */
+.calendar-page.is-sliding { overflow-x: clip; }
 .calendar-page.is-day .cal-title h1 { view-transition-name: day-title; view-transition-class: day; }
 .calendar-page.is-day .now-card { view-transition-name: day-now; view-transition-class: day; }
 .calendar-page.is-day .timeline-card { view-transition-name: day-timeline; view-transition-class: day; }
