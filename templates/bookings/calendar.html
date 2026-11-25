@@ -77,7 +77,8 @@
   </div>
   {# Высота и прокрутка шкалы — до первого кадра, иначе при листании дня шкала сначала стоит на 06:00, а потом прыгает. #}
   <script id="timeline-ready">
-  (() => {
+  // setupTimeline вызывается и при листании дня без перезагрузки (static/app.js).
+  window.setupTimeline = () => {
     const card = document.querySelector('[data-timeline-scroll]');
     const timeline = card && card.querySelector('.timeline');
     if (!card || !timeline) return;
@@ -85,13 +86,12 @@
     const unit = parseFloat(getComputedStyle(timeline).getPropertyValue('--u')) || 1;
     const top = parseFloat(isWide() ? card.dataset.timelineScrollWide : card.dataset.timelineScroll) || 0;
     // Телефон: карточка — от своего верха до низа экрана, прокручивается только она.
-    const fit = () => {
+    window.fitTimeline = () => {
       if (isWide()) return card.style.removeProperty('--timeline-max');
       const offset = card.getBoundingClientRect().top + window.scrollY;
       card.style.setProperty('--timeline-max', `${Math.max(320, window.innerHeight - offset)}px`);
     };
-    fit();
-    window.addEventListener('resize', fit);
+    window.fitTimeline();
     const hint = card.querySelector('.timeline-hint');
     const covered = hint ? hint.offsetHeight + 12 : 0; // подсказка «Свободно весь день» закреплена сверху
     const padding = parseFloat(getComputedStyle(card).paddingTop) || 0;
@@ -99,7 +99,9 @@
     const mark = () => card.classList.toggle('is-scrolled', card.scrollTop > 2);
     mark();
     card.addEventListener('scroll', mark, { passive: true });
-  })();
+  };
+  window.addEventListener('resize', () => window.fitTimeline && window.fitTimeline());
+  window.setupTimeline();
   </script>
 
 

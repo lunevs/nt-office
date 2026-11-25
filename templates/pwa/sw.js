@@ -43,7 +43,8 @@ self.addEventListener('fetch', (event) => {
     return;
   }
   if (url.pathname.startsWith(CONFIG.static)) event.respondWith(staticAsset(request));
-  else if (request.mode === 'navigate') event.respondWith(page(event, url));
+  // Листание дня без перезагрузки (app.js) — как переход: день сохраняется для офлайна.
+  else if (request.mode === 'navigate' || request.headers.get('X-Requested-With') === 'day') event.respondWith(page(event, url));
 });
 
 async function staticAsset(request) {

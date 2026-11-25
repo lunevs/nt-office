@@ -688,7 +688,7 @@ body:has(.management-page) main { padding-top: 8px; }
   position: relative; padding: 18px 12px 18px 14px; border-radius: var(--radius-xl); background: var(--bg-surface);
   /* На телефоне карточка доходит до низа экрана (макет 01): высоту задаёт app.js, снизу — место под панель вкладок. */
   max-height: var(--timeline-max, calc(100dvh - 120px)); padding-bottom: calc(102px + env(safe-area-inset-bottom, 0px));
-  overflow-y: auto; scrollbar-width: none;
+  overflow-x: hidden; overflow-y: auto; scrollbar-width: none; /* сдвиг дня на 24 px не даёт горизонтальной прокрутки */
 }
 .timeline-card::-webkit-scrollbar { display: none; }
 .timeline-card::before {

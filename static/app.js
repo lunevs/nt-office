@@ -167,19 +167,108 @@
   });
 })();
 
-// Листание дня (страница «Движение»): новый день въезжает на 24 px с той стороны, куда листаем.
-// Страница перезагружается, поэтому направление передаём следующей странице через sessionStorage.
+// Листание дня (страница «Движение»): день меняется без перезагрузки — шапка, меню и карточка шкалы стоят,
+// заголовок и расписание въезжают на 24 px с той стороны, куда листаем, плашка дня в неделе переезжает.
+// При ошибке — обычный переход на страницу (тогда движение даёт View Transition из app.css).
 (() => {
-  const page = document.querySelector('.calendar-page[data-day]');
-  if (!page) return;
-  const remember = (target) => {
-    if (!target || target === page.dataset.day) return;
-    try { sessionStorage.setItem('day-dir', JSON.stringify({ dir: target > page.dataset.day ? 'forward' : 'back', t: Date.now() })); } catch { /* приватный режим */ }
+  const current = () => document.querySelector('.calendar-page.is-day[data-day]');
+  if (!current() || !window.fetch || !window.DOMParser) return;
+  const path = location.pathname;
+  const reduced = matchMedia('(prefers-reduced-motion: reduce)');
+  let pending = null;
+
+  const motion = () => {
+    const css = getComputedStyle(document.documentElement);
+    return {
+      shift: parseFloat(css.getPropertyValue('--motion-page')) || 24,
+      duration: parseFloat(css.getPropertyValue('--motion-base')) || 240,
+      easing: css.getPropertyValue('--ease-standard').trim() || 'ease-out',
+    };
   };
-  page.addEventListener('click', (event) => {
+
+  const fallback = (url, dir) => {
+    try { sessionStorage.setItem('day-dir', JSON.stringify({ dir, t: Date.now() })); } catch { /* приватный режим */ }
+    location.href = url;
+  };
+
+  const go = async (url, { push = true, focus = null } = {}) => {
+    const page = current();
+    const target = new URL(url, location.href);
+    const date = target.searchParams.get('date') || '';
+    const dir = page && date && date < page.dataset.day ? 'back' : 'forward';
+    if (!page) return fallback(target.href, dir);
+    if (pending) pending.abort();
+    const controller = new AbortController();
+    pending = controller;
+    let next, book;
+    try {
+      const response = await fetch(target.href, { credentials: 'same-origin', signal: controller.signal, headers: { 'X-Requested-With': 'day' } });
+      if (!response.ok || response.redirected) throw new Error('day');
+      const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
+      next = doc.querySelector('.calendar-page.is-day[data-day]');
+      if (!next) throw new Error('day');
+      book = doc.querySelector('.tabbar-add, .sidebar-book');
+      book = book && book.getAttribute('href');
+    } catch (error) {
+      if (error.name !== 'AbortError') fallback(target.href, dir);
+      return;
+    }
+    if (pending !== controller) return;
+    pending = null;
+
+    const old = current();
+    const fresh = document.importNode(next, true);
+    const hadFocus = old.contains(document.activeElement);
+    const weekOf = (el) => el.querySelector('.week-day')?.getAttribute('href');
+    const sameWeek = weekOf(old) === weekOf(fresh);
+    const pillFrom = old.querySelector('.week-day.is-selected .week-day-num')?.getBoundingClientRect();
+    old.getAnimations({ subtree: true }).forEach((a) => a.finish());
+    old.replaceWith(fresh);
+    if (book) document.querySelectorAll('.tabbar-add, .sidebar-book').forEach((a) => a.setAttribute('href', book));
+    if (push) history.pushState({ day: fresh.dataset.day }, '', target.href);
+    if (window.setupTimeline) window.setupTimeline();
+    if (hadFocus) (fresh.querySelector(focus || '.week-day.is-selected') || fresh.querySelector('.week-day.is-selected'))?.focus({ preventScroll: true });
+    if (reduced.matches || !fresh.animate) return;
+
+    const { shift, duration, easing } = motion();
+    const offset = dir === 'back' ? -shift : shift;
+    const parts = ['.cal-title h1', '.now-card', '.timeline-card > .timeline', '.timeline-card > .timeline-hint'];
+    if (!sameWeek) parts.push('.week-strip');
+    fresh.querySelectorAll(parts.join(', ')).forEach((el) => el.animate(
+      [{ opacity: 0, transform: `translateX(${offset}px)` }, { opacity: 1, transform: 'none' }],
+      { duration, easing, fill: 'backwards' },
+    ));
+    const pill = sameWeek && fresh.querySelector('.week-day.is-selected .week-day-num');
+    const pillTo = pill && pill.getBoundingClientRect();
+    if (pill && pillFrom && pillFrom.width && pillTo.width && pillFrom.left !== pillTo.left) {
+      pill.style.position = 'relative';
+      pill.style.zIndex = '1';
+      pill.animate([{ transform: `translateX(${pillFrom.left - pillTo.left}px)` }, { transform: 'none' }], { duration, easing })
+        .finished.catch(() => {}).finally(() => { pill.style.removeProperty('position'); pill.style.removeProperty('z-index'); });
+    }
+  };
+
+  document.addEventListener('click', (event) => {
     const link = event.target.closest('a[href]');
-    if (!link || link.origin !== location.origin || link.pathname !== location.pathname) return;
-    remember(new URL(link.href).searchParams.get('date'));
+    const page = current();
+    if (!link || !page || !page.contains(link) || event.defaultPrevented || link.target) return;
+    if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    if (link.origin !== location.origin || link.pathname !== path) return;
+    const url = new URL(link.href);
+    if (!url.searchParams.get('date') || url.searchParams.get('view') === 'month') return;
+    event.preventDefault();
+    const label = !link.classList.contains('week-day') && link.getAttribute('aria-label');
+    go(url.href, { focus: label ? `[aria-label="${CSS.escape(label)}"]` : null });
   });
-  page.addEventListener('submit', (event) => remember(event.target.querySelector('[name=date]')?.value));
+
+  document.addEventListener('submit', (event) => {
+    const form = event.target;
+    if (!form.matches('.calendar-page.is-day .date-jump')) return;
+    event.preventDefault();
+    const url = new URL(path, location.href);
+    url.search = new URLSearchParams(new FormData(form)).toString();
+    go(url.href);
+  });
+
+  window.addEventListener('popstate', () => { if (location.pathname === path && current()) go(location.href, { push: false }); });
 })();
