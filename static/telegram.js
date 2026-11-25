@@ -48,10 +48,30 @@
   const main = document.querySelector('[data-tg-main], .booking-form .sheet-actions .button.primary');
   if (main && tg.MainButton) {
     root.classList.add('tg-main');
-    safe(() => {
-      tg.MainButton.setParams({ text: main.textContent.trim(), color: css('--accent'), text_color: '#ffffff', is_visible: true });
-      tg.MainButton.onClick(() => main.click());
+    // Неактивная кнопка (ошибка времени, макет 22) — как кнопка сайта с прозрачностью 40% на фоне приложения.
+    const rgb = (value) => {
+      const hex = value.match(/^#([0-9a-f]{6})$/i);
+      if (hex) return [0, 2, 4].map((i) => parseInt(hex[1].slice(i, i + 2), 16));
+      const parts = value.match(/\d+(\.\d+)?/g);
+      return parts && parts.length >= 3 ? parts.slice(0, 3).map(Number) : null;
+    };
+    const fade = (color) => {
+      const a = rgb(color), b = rgb(css('--bg-canvas'));
+      if (!a || !b) return color;
+      return '#' + a.map((v, i) => Math.round(v * 0.4 + b[i] * 0.6).toString(16).padStart(2, '0')).join('');
+    };
+    const sync = () => safe(() => {
+      const off = main.disabled;
+      tg.MainButton.setParams({
+        text: main.textContent.trim(), is_visible: true, is_active: !off,
+        color: off ? fade(css('--accent')) : css('--accent'),
+        text_color: off ? fade('#ffffff') : '#ffffff',
+      });
     });
+    sync();
+    safe(() => tg.MainButton.onClick(() => { if (!main.disabled) main.click(); }));
+    new MutationObserver(sync).observe(main, { attributes: true, attributeFilter: ['disabled'] });
+    safe(() => tg.onEvent('themeChanged', sync));
   }
 
   // Отклик: лёгкий на нажатия, успех после действия, ошибка при ошибке формы.
@@ -60,7 +80,7 @@
     if (e.target.closest('.button, .chip, .room-chip, .tabbar a, .tabbar-add, .segmented a, .week-day, .icon-button, .switch-row')) safe(() => haptic.impactOccurred('light'));
   });
   if (document.querySelector('.notice')) safe(() => haptic.notificationOccurred('success'));
-  if (document.querySelector('.field-error, .inline-alert[role=alert], .is-error')) safe(() => haptic.notificationOccurred('error'));
+  if (document.querySelector('.field-error:not([hidden]), .inline-alert[role=alert], .is-error')) safe(() => haptic.notificationOccurred('error'));
 
   // Пока открыта шторка, свайп вниз закрывает шторку, а не приложение.
   const swipes = () => safe(() => (document.querySelector('dialog[open]') ? tg.disableVerticalSwipes() : tg.enableVerticalSwipes()));

@@ -21,7 +21,34 @@ window.initBookingForm = (root) => {
   const dateDisplay = $('[data-display=date]'), untilDisplay = $('[data-display=until]');
   const untilField = $('[data-repeat-until]');
 
+  // Ошибка времени (макет 22): поле с ошибкой обведено, под временем — текст вместо подсказки,
+  // «Забронировать» неактивна. Тексты те же, что у проверки на сервере (Event.clean).
+  const timeError = $('[data-time-error]'), timeErrorText = $('[data-time-error-text]'), timeHint = $('[data-time-hint]');
+  const startField = $('[data-start-field]'), endField = $('[data-end-field]'), submit = $('[data-submit]');
+  const serverError = timeError && !timeError.hidden ? { text: timeErrorText.textContent, start: startField.classList.contains('is-error'), end: endField.classList.contains('is-error') } : null;
+  let timeTouched = false;
+  const checkTime = () => {
+    const from = toMinutes(start.value), to = toMinutes(end.value);
+    if (from !== null && from < 6 * 60) return { text: 'Офис открыт с 06:00 до 23:00 — встреча может начаться не раньше 06:00', start: true };
+    if (to !== null && to > LAST) return { text: 'Офис открыт с 06:00 до 23:00 — встреча должна закончиться не позже 23:00', end: true };
+    if (from !== null && to !== null && to <= from) return { text: 'Окончание должно быть позже начала в тот же день.', end: true };
+    return timeTouched ? null : serverError; // ошибку с сервера (например, лимит неподтверждённого аккаунта) убираем, когда время поменяли
+  };
+  const showTimeError = () => {
+    if (!timeError) return;
+    const error = checkTime();
+    timeError.hidden = !error;
+    if (error) timeErrorText.textContent = error.text;
+    if (timeHint) timeHint.hidden = Boolean(error);
+    startField.classList.toggle('is-error', Boolean(error?.start));
+    endField.classList.toggle('is-error', Boolean(error?.end));
+    [[start, error?.start], [end, error?.end]].forEach(([input, bad]) => (bad ? input.setAttribute('aria-invalid', 'true') : input.removeAttribute('aria-invalid')));
+    if (submit) submit.disabled = Boolean(error);
+  };
+  const timeChanged = () => { timeTouched = true; };
+
   const refresh = () => {
+    showTimeError();
     const day = parseDate(date.value);
     if (dateDisplay) dateDisplay.textContent = day ? longDate(day) : 'Выберите дату';
     form.querySelectorAll('[data-date]').forEach((chip) => chip.classList.toggle('is-selected', chip.dataset.date === date.value));
@@ -46,11 +73,12 @@ window.initBookingForm = (root) => {
   // Быстрые даты: «Сегодня», «Завтра», «Чт, 26»
   form.querySelectorAll('[data-date]').forEach((chip) => chip.addEventListener('click', () => { date.value = chip.dataset.date; refresh(); }));
 
-  // Длительность: окончание = начало + 1…4 ч, но не позже 23:00
+  // Длительность: окончание = начало + 1…4 ч. Позже 23:00 — показываем ошибку (макет 22), а не обрезаем молча.
   form.querySelectorAll('[data-minutes]').forEach((chip) => chip.addEventListener('click', () => {
     const from = toMinutes(start.value);
     if (from === null) return;
-    end.value = toClock(Math.min(LAST, from + Number(chip.dataset.minutes)));
+    end.value = toClock(Math.min(24 * 60 - 1, from + Number(chip.dataset.minutes)));
+    timeChanged();
     refresh();
   }));
 
@@ -74,7 +102,7 @@ window.initBookingForm = (root) => {
         option.setAttribute('role', 'option');
         option.setAttribute('aria-selected', String(m === current));
         option.innerHTML = `<b>${toClock(m)}</b><span>${duration(m - from)}</span>`;
-        option.addEventListener('click', () => { end.value = toClock(m); close(); refresh(); end.focus(); });
+        option.addEventListener('click', () => { end.value = toClock(m); timeChanged(); close(); refresh(); end.focus(); });
         return option;
       }));
       list.hidden = false;
@@ -108,8 +136,10 @@ window.initBookingForm = (root) => {
     if (e.target !== input && input.showPicker && !input.disabled) { try { input.showPicker(); } catch { input.focus(); } }
   }));
 
+  [start, end].forEach((input) => ['input', 'change'].forEach((type) => input.addEventListener(type, timeChanged)));
   [date, start, end, repeat, until].forEach((input) => input && input.addEventListener('change', refresh));
   start.addEventListener('input', refresh);
+  end.addEventListener('input', refresh);
   window.addEventListener('pageshow', refresh);
   refresh();
 };

@@ -43,18 +43,19 @@
           </label>
           {% if form.date.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.date.errors|join:' ' }}</div>{% endif %}
           <div class="time-row">
-            <label class="field-input{% if form.start_time.errors %} is-error{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg>{{ form.start_time }}<span class="visually-hidden">Начало</span></label>
+            <label class="field-input{% if form.start_time.errors %} is-error{% endif %}" data-start-field><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg>{{ form.start_time }}<span class="visually-hidden">Начало</span></label>
             <svg class="icon time-arrow" aria-hidden="true"><use href="{{ icons }}#arrow-right"/></svg>
             <div class="end-time">
-              <label class="field-input{% if form.end_time.errors %} is-error{% endif %}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg>{{ form.end_time }}<span class="visually-hidden">Окончание</span></label>
+              <label class="field-input{% if form.end_time.errors %} is-error{% endif %}" data-end-field><svg class="icon" aria-hidden="true"><use href="{{ icons }}#clock"/></svg>{{ form.end_time }}<span class="visually-hidden">Окончание</span></label>
               <div class="time-list" role="listbox" aria-label="Время окончания" hidden data-time-list></div>
             </div>
           </div>
-          {% if form.start_time.errors or form.end_time.errors %}<div class="field-error"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg>{{ form.start_time.errors|join:' ' }} {{ form.end_time.errors|join:' ' }}</div>{% endif %}
+          {# Ошибка времени (макет 22): сервер показывает её после отправки, скрипт — сразу при выборе времени. #}
+          <div class="field-error" role="alert" data-time-error{% if not form.start_time.errors and not form.end_time.errors %} hidden{% endif %}><svg class="icon" aria-hidden="true"><use href="{{ icons }}#alert"/></svg><span data-time-error-text>{{ form.start_time.errors|join:' ' }}{% if form.start_time.errors and form.end_time.errors %} {% endif %}{{ form.end_time.errors|join:' ' }}</span></div>
           <div class="chips" data-duration-chips>
             <button type="button" class="chip" data-minutes="60">1 ч</button><button type="button" class="chip" data-minutes="90">1,5 ч</button><button type="button" class="chip" data-minutes="120">2 ч</button><button type="button" class="chip" data-minutes="180">3 ч</button><button type="button" class="chip" data-minutes="240">4 ч</button>
           </div>
-          <p class="panel-hint">Нужно дольше — нажмите на время окончания. Бронь с 06:00 до 23:00 по Белграду</p>
+          <p class="panel-hint" data-time-hint{% if form.start_time.errors or form.end_time.errors %} hidden{% endif %}>Нужно дольше — нажмите на время окончания. Бронь с 06:00 до 23:00 по Белграду</p>
         </section>
       </div>
 
@@ -139,7 +140,7 @@
     <div class="sheet-actions">
       <span class="sheet-note">{% if event %}Изменения сразу появятся в календаре{% else %}Встреча сразу появится в календаре{% endif %}</span>
       <a class="button ghost button-m sheet-cancel" href="{% if event %}{% url 'event_detail' event.pk %}{% else %}{% url 'home' %}?date={{ day|date:'Y-m-d' }}{% endif %}" data-dialog-close>Отмена</a>
-      <button class="button primary" type="submit" {% if series %}data-open-scope{% endif %}>{% if event %}Сохранить{% else %}Забронировать{% endif %}</button>
+      <button class="button primary" type="submit" data-submit {% if series %}data-open-scope{% endif %}>{% if event %}Сохранить{% else %}Забронировать{% endif %}</button>
     </div>
   </form>
   {% if not user.is_verified and not user.verification_requested_at %}<form id="verify-form" method="post" action="{% url 'request_verification' %}">{% csrf_token %}<input type="hidden" name="next" value="{{ request.get_full_path }}"></form>{% endif %}

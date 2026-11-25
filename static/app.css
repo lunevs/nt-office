@@ -930,6 +930,9 @@ fieldset.panel > .field-error { margin-top: 12px; }
 .field-label { margin-top: 4px; margin-bottom: -6px; font-size: 13px; line-height: 18px; letter-spacing: 0; color: var(--text-secondary); }
 .field-error { display: flex; gap: 6px; font-size: 13px; line-height: 18px; letter-spacing: 0; color: var(--danger); }
 .field-error .icon { width: 16px; height: 16px; margin-top: 1px; }
+/* Ошибка времени (макет 22): у поля времени красная только обводка, «Забронировать» — 40% */
+.time-row .field-input.is-error > .icon { color: var(--text-primary); }
+.sheet-actions .button.primary:disabled { opacity: .4; }
 .inline-alert { display: flex; gap: 10px; padding: 12px 16px; border-radius: var(--radius-lg); background: var(--danger-soft); color: var(--danger); font-size: 14px; line-height: 20px; }
 .inline-alert ul { margin: 0; padding: 0; list-style: none; }
 

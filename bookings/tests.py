@@ -138,6 +138,22 @@ class BookingTests(TestCase):
         bogus = self.client.get(reverse('event_create'), {'date': '2026-11-12', 'start': '03:00'}).context['form']
         self.assertEqual(bogus.initial['start_time'], '10:00')
 
+    def test_time_error_matches_mockup_22(self):
+        # Пустая форма: место под ошибку есть, но скрыто; подсказка видна; кнопка помечена для скрипта.
+        page = self.client.get(reverse('event_create'), {'date': '2026-11-12'}).content.decode()
+        self.assertIn('data-time-error hidden', page)
+        self.assertRegex(page, r'<p class="panel-hint" data-time-hint>')
+        self.assertIn('data-submit', page)
+        # Окончание позже 23:00: ошибка под временем, поле окончания обведено, подсказки нет.
+        response = self.client.post(reverse('event_create'), {**self.data, 'start_time': '22:30', 'end_time': '23:30'})
+        self.assertEqual(response.status_code, 200)
+        page = response.content.decode()
+        self.assertFalse(Event.objects.exists())
+        self.assertRegex(page, r'data-time-error>.*Офис открыт с 06:00 до 23:00 — встреча должна закончиться не позже 23:00')
+        self.assertIn('data-time-hint hidden', page)
+        self.assertRegex(page, r'class="field-input is-error" data-end-field')
+        self.assertRegex(page, r'class="field-input" data-start-field')
+
     def test_profile_shows_three_nearest_responsible_meetings(self):
         from unittest.mock import patch
         from datetime import datetime
