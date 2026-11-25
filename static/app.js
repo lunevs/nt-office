@@ -167,11 +167,11 @@
   });
 })();
 
-// Листание дня (страница «Движение»): день меняется без перезагрузки — шапка, меню и карточка шкалы стоят,
-// заголовок и расписание въезжают на 24 px с той стороны, куда листаем, плашка дня в неделе переезжает.
+// Листание дня (страница «Движение»): день, месяц и вид «День/Месяц» меняются без перезагрузки — шапка, меню
+// и карточки стоят, содержимое въезжает на 24 px с той стороны, куда листаем, плашка дня в неделе переезжает.
 // При ошибке — обычный переход на страницу (тогда движение даёт View Transition из app.css).
 (() => {
-  const current = () => document.querySelector('.calendar-page.is-day[data-day]');
+  const current = () => document.querySelector('.calendar-page[data-day]');
   if (!current() || !window.fetch || !window.DOMParser) return;
   const path = location.pathname;
   const reduced = matchMedia('(prefers-reduced-motion: reduce)');
@@ -205,7 +205,7 @@
       const response = await fetch(target.href, { credentials: 'same-origin', signal: controller.signal, headers: { 'X-Requested-With': 'day' } });
       if (!response.ok || response.redirected) throw new Error('day');
       const doc = new DOMParser().parseFromString(await response.text(), 'text/html');
-      next = doc.querySelector('.calendar-page.is-day[data-day]');
+      next = doc.querySelector('.calendar-page[data-day]');
       if (!next) throw new Error('day');
       book = doc.querySelector('.tabbar-add, .sidebar-book');
       book = book && book.getAttribute('href');
@@ -219,21 +219,32 @@
     const old = current();
     const fresh = document.importNode(next, true);
     const hadFocus = old.contains(document.activeElement);
-    const weekOf = (el) => el.querySelector('.week-day')?.getAttribute('href');
-    const sameWeek = weekOf(old) === weekOf(fresh);
+    const isDay = (el) => el.classList.contains('is-day');
+    const sameMode = isDay(old) === isDay(fresh);
+    const firstHref = (el, selector) => el.querySelector(selector)?.getAttribute('href');
+    const sameWeek = sameMode && firstHref(old, '.week-day') === firstHref(fresh, '.week-day');
+    const sameMonth = sameMode && firstHref(old, '.month-grid .month-cell') === firstHref(fresh, '.month-grid .month-cell');
     const pillFrom = old.querySelector('.week-day.is-selected .week-day-num')?.getBoundingClientRect();
     old.getAnimations({ subtree: true }).forEach((a) => a.finish());
     old.replaceWith(fresh);
     if (book) document.querySelectorAll('.tabbar-add, .sidebar-book').forEach((a) => a.setAttribute('href', book));
     if (push) history.pushState({ day: fresh.dataset.day }, '', target.href);
     if (window.setupTimeline) window.setupTimeline();
-    if (hadFocus) (fresh.querySelector(focus || '.week-day.is-selected') || fresh.querySelector('.week-day.is-selected'))?.focus({ preventScroll: true });
+    const selected = '.week-day.is-selected, .month-grid .month-cell.is-selected';
+    if (hadFocus) ((focus && fresh.querySelector(focus)) || fresh.querySelector(selected))?.focus({ preventScroll: true });
     if (reduced.matches || !fresh.animate) return;
 
     const { shift, duration, easing } = motion();
+    if (!sameMode) { // «День» ↔ «Месяц»: другая раскладка — просто проявляется, шапка стоит
+      fresh.querySelectorAll(':scope > :not(.cal-greeting, .cal-actions, script)').forEach((el) => el.animate([{ opacity: 0 }, { opacity: 1 }], { duration, easing }));
+      return;
+    }
     const offset = dir === 'back' ? -shift : shift;
-    const parts = ['.cal-title h1', '.now-card', '.timeline-card > .timeline', '.timeline-card > .timeline-hint'];
-    if (!sameWeek) parts.push('.week-strip');
+    const parts = isDay(fresh)
+      ? ['.cal-title h1', '.now-card', '.timeline-card > .timeline', '.timeline-card > .timeline-hint']
+      : ['.day-panel > *'];
+    if (isDay(fresh) && !sameWeek) parts.push('.week-strip');
+    if (!isDay(fresh) && !sameMonth) parts.push('.cal-title h1', '.month-card > table');
     fresh.querySelectorAll(parts.join(', ')).forEach((el) => el.animate(
       [{ opacity: 0, transform: `translateX(${offset}px)` }, { opacity: 1, transform: 'none' }],
       { duration, easing, fill: 'backwards' },
@@ -255,7 +266,7 @@
     if (event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
     if (link.origin !== location.origin || link.pathname !== path) return;
     const url = new URL(link.href);
-    if (!url.searchParams.get('date') || url.searchParams.get('view') === 'month') return;
+    if (!url.searchParams.get('date') && !url.searchParams.get('view')) return;
     event.preventDefault();
     const label = !link.classList.contains('week-day') && link.getAttribute('aria-label');
     go(url.href, { focus: label ? `[aria-label="${CSS.escape(label)}"]` : null });
@@ -263,7 +274,7 @@
 
   document.addEventListener('submit', (event) => {
     const form = event.target;
-    if (!form.matches('.calendar-page.is-day .date-jump')) return;
+    if (!form.matches('.calendar-page .date-jump')) return;
     event.preventDefault();
     const url = new URL(path, location.href);
     url.search = new URLSearchParams(new FormData(form)).toString();

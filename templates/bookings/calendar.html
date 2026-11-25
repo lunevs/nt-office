@@ -75,6 +75,21 @@
       </div>
     </div>
   </div>
+
+
+{% else %}
+  <div class="month-card">{% include 'bookings/month.html' %}</div>
+
+  <div class="day-panel">
+    <div class="day-heading"><h2>{% if day == today %}Сегодня, {{ day|date:'j E' }}{% else %}{{ day|date:'l, j E'|capfirst }}{% endif %}</h2>{% if event_count %}<span>{{ event_count|ru_plural:"встреча,встречи,встреч" }}</span>{% endif %}</div>
+    {% if agenda %}
+      <div class="agenda">{% for event in agenda %}{% include 'bookings/_agenda_item.html' %}{% endfor %}</div>
+    {% else %}
+      {% include 'bookings/_empty_day.html' %}
+    {% endif %}
+    <a class="button secondary day-book" href="{% url 'event_create' %}?date={{ day|date:'Y-m-d' }}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#plus"/></svg>Забронировать на {{ day|date:'j E' }}</a>
+  </div>
+{% endif %}
   {# Высота и прокрутка шкалы — до первого кадра, иначе при листании дня шкала сначала стоит на 06:00, а потом прыгает. #}
   <script id="timeline-ready">
   // setupTimeline вызывается и при листании дня без перезагрузки (static/app.js).
@@ -103,20 +118,5 @@
   window.addEventListener('resize', () => window.fitTimeline && window.fitTimeline());
   window.setupTimeline();
   </script>
-
-
-{% else %}
-  <div class="month-card">{% include 'bookings/month.html' %}</div>
-
-  <div class="day-panel">
-    <div class="day-heading"><h2>{% if day == today %}Сегодня, {{ day|date:'j E' }}{% else %}{{ day|date:'l, j E'|capfirst }}{% endif %}</h2>{% if event_count %}<span>{{ event_count|ru_plural:"встреча,встречи,встреч" }}</span>{% endif %}</div>
-    {% if agenda %}
-      <div class="agenda">{% for event in agenda %}{% include 'bookings/_agenda_item.html' %}{% endfor %}</div>
-    {% else %}
-      {% include 'bookings/_empty_day.html' %}
-    {% endif %}
-    <a class="button secondary day-book" href="{% url 'event_create' %}?date={{ day|date:'Y-m-d' }}"><svg class="icon" aria-hidden="true"><use href="{{ icons }}#plus"/></svg>Забронировать на {{ day|date:'j E' }}</a>
-  </div>
-{% endif %}
 </section>
 {% endblock %}

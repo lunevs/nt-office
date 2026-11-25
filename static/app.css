@@ -172,6 +172,7 @@
 *, *::before, *::after { box-sizing: border-box; }
 
 html {
+  background: var(--bg-canvas); /* фон до первой отрисовки — без белой вспышки между страницами */
   -webkit-text-size-adjust: 100%;
   text-size-adjust: 100%;
 }
@@ -748,7 +749,7 @@ body:has(.management-page) main { padding-top: 8px; }
 .mini-month-card, .rooms-now { display: none; }
 
 /* Месяц (MonthCell) */
-.month-card { grid-area: month; padding: 14px 10px 4px; border-radius: var(--radius-xl); background: var(--bg-surface); }
+.month-card { grid-area: month; overflow: hidden; padding: 14px 10px 4px; border-radius: var(--radius-xl); background: var(--bg-surface); }
 .month-grid, .mini-month { width: 100%; table-layout: fixed; border-collapse: collapse; }
 .month-grid th, .mini-month th { height: 22px; padding: 0 0 6px; font-size: 11px; line-height: 14px; font-weight: 600; letter-spacing: .6px; text-transform: uppercase; color: var(--text-tertiary); text-align: center; vertical-align: top; }
 .month-grid td, .mini-month td { padding: 0 0 6px; vertical-align: top; }
