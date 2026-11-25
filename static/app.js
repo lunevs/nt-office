@@ -167,28 +167,19 @@
   });
 })();
 
-// Шкала дня 06:00–23:00 (макеты 01, 20, 23): при открытии прокручиваем к текущему часу,
-// первой встрече или 09:00; на компьютере над этим часом видно ещё два.
+// Листание дня (страница «Движение»): новый день въезжает на 24 px с той стороны, куда листаем.
+// Страница перезагружается, поэтому направление передаём следующей странице через sessionStorage.
 (() => {
-  const card = document.querySelector('[data-timeline-scroll]');
-  const timeline = card?.querySelector('.timeline');
-  if (!card || !timeline) return;
-  const wide = getComputedStyle(card).getPropertyValue('--wide').trim() === '1';
-  const unit = parseFloat(getComputedStyle(timeline).getPropertyValue('--u')) || 1;
-  const top = parseFloat(wide ? card.dataset.timelineScrollWide : card.dataset.timelineScroll) || 0;
-  // Телефон: карточка — от своего верха до низа экрана, прокручивается только она.
-  const fit = () => {
-    if (getComputedStyle(card).getPropertyValue('--wide').trim() === '1') return card.style.removeProperty('--timeline-max');
-    const top = card.getBoundingClientRect().top + window.scrollY;
-    card.style.setProperty('--timeline-max', `${Math.max(320, window.innerHeight - top)}px`);
+  const page = document.querySelector('.calendar-page[data-day]');
+  if (!page) return;
+  const remember = (target) => {
+    if (!target || target === page.dataset.day) return;
+    try { sessionStorage.setItem('day-dir', JSON.stringify({ dir: target > page.dataset.day ? 'forward' : 'back', t: Date.now() })); } catch { /* приватный режим */ }
   };
-  fit();
-  window.addEventListener('resize', fit);
-  const hint = card.querySelector('.timeline-hint');
-  const covered = hint ? hint.offsetHeight + 12 : 0; // подсказка «Свободно весь день» закреплена сверху
-  const padding = parseFloat(getComputedStyle(card).paddingTop) || 0;
-  card.scrollTop = Math.max(0, timeline.offsetTop + top * unit - padding - covered);
-  const mark = () => card.classList.toggle('is-scrolled', card.scrollTop > 2);
-  mark();
-  card.addEventListener('scroll', mark, { passive: true });
+  page.addEventListener('click', (event) => {
+    const link = event.target.closest('a[href]');
+    if (!link || link.origin !== location.origin || link.pathname !== location.pathname) return;
+    remember(new URL(link.href).searchParams.get('date'));
+  });
+  page.addEventListener('submit', (event) => remember(event.target.querySelector('[name=date]')?.value));
 })();

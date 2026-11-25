@@ -1147,6 +1147,26 @@ fieldset.panel > .field-error { margin-top: 12px; }
 ::view-transition-group(sidebar),
 ::view-transition-group(tabbar) { animation: none; }
 
+/* Листание дня (стиль «Движение/Листание дня»): шапка и полоса недели стоят, дата, «Сейчас» и шкала
+   въезжают на 24 px с той стороны, куда листаем, и проявляются; выбранный день в полосе переезжает. */
+.calendar-page.is-day .cal-title h1 { view-transition-name: day-title; view-transition-class: day; }
+.calendar-page.is-day .now-card { view-transition-name: day-now; view-transition-class: day; }
+.calendar-page.is-day .timeline-card { view-transition-name: day-timeline; view-transition-class: day; }
+.calendar-page.is-day .week-strip { view-transition-name: week-strip; }
+.calendar-page.is-day .week-day.is-selected { view-transition-name: week-selected; }
+:root { --day-shift: 0px; }
+:root[data-day-dir="forward"] { --day-shift: var(--motion-page); }
+:root[data-day-dir="back"] { --day-shift: calc(-1 * var(--motion-page)); }
+::view-transition-group(*.day) { animation: none; }
+::view-transition-old(*.day), ::view-transition-new(*.day) { inline-size: auto; block-size: auto; }
+::view-transition-old(*.day) { animation: day-out var(--motion-fast) var(--ease-exit) both; }
+::view-transition-new(*.day) { animation: day-in var(--motion-base) var(--ease-standard) both; }
+::view-transition-old(week-strip) { animation: none; opacity: 0; }
+::view-transition-new(week-strip) { animation: none; }
+::view-transition-group(week-selected) { animation-duration: var(--motion-base); animation-timing-function: var(--ease-standard); }
+@keyframes day-in { from { opacity: 0; transform: translateX(var(--day-shift)); } }
+@keyframes day-out { to { opacity: 0; } }
+
 @media (prefers-reduced-motion: reduce) {
   @view-transition { navigation: none; }
 }

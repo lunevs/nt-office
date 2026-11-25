@@ -1,7 +1,8 @@
 {% extends 'base.html' %}{% load static ui %}
 {% block title %}Календарь · Наш офис{% endblock %}
+{% block head %}{% if calendar_mode == 'day' %}<link rel="expect" href="#timeline-ready" blocking="render">{% endif %}{% endblock %}
 {% block content %}{% static 'icons.svg' as icons %}
-<section class="calendar-page is-{{ calendar_mode }}">
+<section class="calendar-page is-{{ calendar_mode }}" data-day="{{ day|date:'Y-m-d' }}">
 
   <p class="cal-greeting"><span>Привет,</span> {{ user.first_name|default:user.username }}</p>
 
@@ -74,6 +75,32 @@
       </div>
     </div>
   </div>
+  {# Высота и прокрутка шкалы — до первого кадра, иначе при листании дня шкала сначала стоит на 06:00, а потом прыгает. #}
+  <script id="timeline-ready">
+  (() => {
+    const card = document.querySelector('[data-timeline-scroll]');
+    const timeline = card && card.querySelector('.timeline');
+    if (!card || !timeline) return;
+    const isWide = () => getComputedStyle(card).getPropertyValue('--wide').trim() === '1';
+    const unit = parseFloat(getComputedStyle(timeline).getPropertyValue('--u')) || 1;
+    const top = parseFloat(isWide() ? card.dataset.timelineScrollWide : card.dataset.timelineScroll) || 0;
+    // Телефон: карточка — от своего верха до низа экрана, прокручивается только она.
+    const fit = () => {
+      if (isWide()) return card.style.removeProperty('--timeline-max');
+      const offset = card.getBoundingClientRect().top + window.scrollY;
+      card.style.setProperty('--timeline-max', `${Math.max(320, window.innerHeight - offset)}px`);
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    const hint = card.querySelector('.timeline-hint');
+    const covered = hint ? hint.offsetHeight + 12 : 0; // подсказка «Свободно весь день» закреплена сверху
+    const padding = parseFloat(getComputedStyle(card).paddingTop) || 0;
+    card.scrollTop = Math.max(0, timeline.offsetTop + top * unit - padding - covered);
+    const mark = () => card.classList.toggle('is-scrolled', card.scrollTop > 2);
+    mark();
+    card.addEventListener('scroll', mark, { passive: true });
+  })();
+  </script>
 
 
 {% else %}

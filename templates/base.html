@@ -15,7 +15,7 @@
 <link rel="icon" href="{% static 'favicon.svg' %}" type="image/svg+xml">
 <link rel="apple-touch-icon" href="{% static 'icons/apple-touch-icon.png' %}">
 <title>{% block title %}Наш офис{% endblock %}</title>
-<script>document.documentElement.classList.add("js");try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}</script>
+<script>document.documentElement.classList.add("js");try{var t=localStorage.getItem("theme");if(t==="light"||t==="dark")document.documentElement.dataset.theme=t}catch(e){}try{var d=JSON.parse(sessionStorage.getItem("day-dir")||"null");sessionStorage.removeItem("day-dir");if(d&&Date.now()-d.t<10000)document.documentElement.dataset.dayDir=d.dir}catch(e){}</script>
 <link rel="stylesheet" href="{% static 'app.css' %}">
 {% if in_telegram %}<script src="https://telegram.org/js/telegram-web-app.js?57"></script>{% endif %}
 {% block head %}{% endblock %}
